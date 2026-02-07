@@ -80,6 +80,27 @@ function formatDate(dateStr: string): string {
   return date.toLocaleDateString('de-CH', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
+function isAuthenticationError(errorMessage: string | undefined | null): boolean {
+  if (!errorMessage) return false;
+  const authErrorPatterns = [
+    /auth/i,
+    /credential/i,
+    /login/i,
+    /password/i,
+    /pin/i,
+    /invalid.*user/i,
+    /user.*invalid/i,
+    /access.*denied/i,
+    /unauthorized/i,
+    /forbidden/i,
+    /jwt/i,
+    /token.*expired/i,
+    /expired.*token/i,
+    /session.*expired/i,
+  ];
+  return authErrorPatterns.some(pattern => pattern.test(errorMessage));
+}
+
 export default function AccountsTable({ accounts, baseCurrency, onRefresh }: Props) {
   const [syncing, setSyncing] = useState<number | null>(null);
   const [deleting, setDeleting] = useState<number | null>(null);
@@ -107,6 +128,8 @@ export default function AccountsTable({ accounts, baseCurrency, onRefresh }: Pro
   const [credentialSchema, setCredentialSchema] = useState<Record<string, any> | null>(null);
   const [credentialValues, setCredentialValues] = useState<Record<string, string>>({});
   const [savingCredentials, setSavingCredentials] = useState(false);
+  const [credentialsRetrySync, setCredentialsRetrySync] = useState(false);
+  const [credentialsError, setCredentialsError] = useState('');
 
   // Toast notifications
   const [toasts, setToasts] = useState<ToastData[]>([]);
@@ -160,10 +183,12 @@ export default function AccountsTable({ accounts, baseCurrency, onRefresh }: Pro
     }
   };
 
-  const openCredentialsModal = async (account: Account) => {
+  const openCredentialsModal = async (account: Account, forRetry = false, errorMsg = '') => {
     setCredentialsAccount(account);
     setCredentialValues({});
     setCredentialSchema(null);
+    setCredentialsRetrySync(forRetry);
+    setCredentialsError(errorMsg);
     try {
       // Fetch broker schema and current credentials in parallel
       const [broker, credData] = await Promise.all([
@@ -180,17 +205,73 @@ export default function AccountsTable({ accounts, baseCurrency, onRefresh }: Pro
     }
   };
 
-  const handleSaveCredentials = async () => {
+  const handleSaveCredentials = async (andRetrySync = false) => {
     if (!credentialsAccount) return;
     setSavingCredentials(true);
+    setCredentialsError('');
+    const accountId = credentialsAccount.id;
+    const accountName = credentialsAccount.name;
     try {
-      await updateAccountCredentials(credentialsAccount.id, credentialValues);
-      addToast('success', `Credentials updated for ${credentialsAccount.name}`);
-      setCredentialsAccount(null);
-      setCredentialValues({});
-      onRefresh();
+      await updateAccountCredentials(accountId, credentialValues);
+
+      if (andRetrySync) {
+        // Close modal and retry sync
+        setCredentialsAccount(null);
+        setCredentialValues({});
+        setCredentialsRetrySync(false);
+        addToast('success', `Credentials updated. Syncing ${accountName}...`);
+
+        // Trigger sync
+        setSyncing(accountId);
+        try {
+          const result = await syncAccount(accountId);
+          if (result.status === 'pending_auth') {
+            setAuthPrompt({
+              accountId,
+              accountName,
+              twoFaType: result.two_fa_type || 'totp',
+            });
+            setAuthCode('');
+            setAuthError('');
+          } else if (result.status === 'error') {
+            // If it's still an auth error, open credentials modal again
+            const isAuthError = isAuthenticationError(result.error);
+            if (isAuthError) {
+              const account = accounts.find(a => a.id === accountId);
+              if (account) {
+                openCredentialsModal(account, true, result.error);
+              }
+            } else {
+              addToast('error', `Sync failed: ${result.error || 'Unknown error'}`);
+            }
+            onRefresh();
+          } else {
+            addToast('success', `${accountName} synced successfully`);
+            onRefresh();
+          }
+        } catch (err: any) {
+          const isAuthError = isAuthenticationError(err.message);
+          if (isAuthError) {
+            const account = accounts.find(a => a.id === accountId);
+            if (account) {
+              openCredentialsModal(account, true, err.message);
+            }
+          } else {
+            addToast('error', `Sync failed: ${err.message || 'Unknown error'}`);
+          }
+          onRefresh();
+        } finally {
+          setSyncing(null);
+        }
+      } else {
+        addToast('success', `Credentials updated for ${accountName}`);
+        setCredentialsAccount(null);
+        setCredentialValues({});
+        setCredentialsRetrySync(false);
+        onRefresh();
+      }
     } catch (err: any) {
-      addToast('error', err.message || 'Failed to update credentials');
+      setCredentialsError(err.message || 'Failed to update credentials');
     } finally {
       setSavingCredentials(false);
     }
@@ -212,14 +293,24 @@ export default function AccountsTable({ accounts, baseCurrency, onRefresh }: Pro
         setAuthCode('');
         setAuthError('');
       } else if (result.status === 'error') {
-        addToast('error', `Failed to sync ${accountName}: ${result.error || 'Unknown error'}`);
+        // Check if it's an authentication error
+        if (account && isAuthenticationError(result.error)) {
+          openCredentialsModal(account, true, result.error);
+        } else {
+          addToast('error', `Failed to sync ${accountName}: ${result.error || 'Unknown error'}`);
+        }
         onRefresh();
       } else {
         addToast('success', `${accountName} synced successfully`);
         onRefresh();
       }
     } catch (err: any) {
-      addToast('error', `Failed to sync ${accountName}: ${err.message || 'Unknown error'}`);
+      // Check if it's an authentication error
+      if (account && isAuthenticationError(err.message)) {
+        openCredentialsModal(account, true, err.message);
+      } else {
+        addToast('error', `Failed to sync ${accountName}: ${err.message || 'Unknown error'}`);
+      }
       onRefresh();
     } finally {
       setSyncing(null);
@@ -623,6 +714,20 @@ export default function AccountsTable({ accounts, baseCurrency, onRefresh }: Pro
               >
                 Close
               </button>
+              {isAuthenticationError(errorAccount.last_sync_error) && (
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={() => {
+                    const account = errorAccount;
+                    setErrorAccount(null);
+                    openCredentialsModal(account, true, account.last_sync_error);
+                  }}
+                >
+                  <Settings size={14} style={{ marginRight: 6 }} />
+                  Update Credentials
+                </button>
+              )}
               <button
                 type="button"
                 className="btn btn-primary"
@@ -641,24 +746,43 @@ export default function AccountsTable({ accounts, baseCurrency, onRefresh }: Pro
 
       {/* Credentials Modal */}
       {credentialsAccount && (
-        <div className="modal-overlay" onClick={() => setCredentialsAccount(null)}>
+        <div className="modal-overlay" onClick={() => { setCredentialsAccount(null); setCredentialsRetrySync(false); setCredentialsError(''); }}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h3>
-                <Settings size={18} style={{ marginRight: 8 }} />
-                Update Credentials
+                {credentialsRetrySync ? (
+                  <>
+                    <AlertCircle size={18} style={{ marginRight: 8 }} className="status-error" />
+                    Authentication Failed
+                  </>
+                ) : (
+                  <>
+                    <Settings size={18} style={{ marginRight: 8 }} />
+                    Update Credentials
+                  </>
+                )}
               </h3>
-              <button className="btn btn-ghost" onClick={() => setCredentialsAccount(null)}>
+              <button className="btn btn-ghost" onClick={() => { setCredentialsAccount(null); setCredentialsRetrySync(false); setCredentialsError(''); }}>
                 <X size={18} />
               </button>
             </div>
 
+            {credentialsError && (
+              <div className="form-error" style={{ marginBottom: 16 }}>
+                {credentialsError}
+              </div>
+            )}
+
             <p className="form-hint" style={{ marginBottom: 16 }}>
-              Update credentials for <strong>{credentialsAccount.name}</strong>
+              {credentialsRetrySync ? (
+                <>Update credentials for <strong>{credentialsAccount.name}</strong> and retry sync.</>
+              ) : (
+                <>Update credentials for <strong>{credentialsAccount.name}</strong></>
+              )}
             </p>
 
             {credentialSchema?.properties ? (
-              <form onSubmit={(e) => { e.preventDefault(); handleSaveCredentials(); }}>
+              <form onSubmit={(e) => { e.preventDefault(); handleSaveCredentials(credentialsRetrySync); }}>
                 {Object.entries(credentialSchema.properties).map(([key, field]: [string, any]) => (
                   <div className="form-group" key={key}>
                     <label htmlFor={`cred-${key}`}>{field.title || key}</label>
@@ -679,17 +803,47 @@ export default function AccountsTable({ accounts, baseCurrency, onRefresh }: Pro
                   <button
                     type="button"
                     className="btn btn-ghost"
-                    onClick={() => setCredentialsAccount(null)}
+                    onClick={() => { setCredentialsAccount(null); setCredentialsRetrySync(false); setCredentialsError(''); }}
                   >
                     Cancel
                   </button>
-                  <button
-                    type="submit"
-                    className="btn btn-primary"
-                    disabled={savingCredentials}
-                  >
-                    {savingCredentials ? 'Saving...' : 'Save Credentials'}
-                  </button>
+                  {credentialsRetrySync ? (
+                    <>
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        onClick={() => handleSaveCredentials(false)}
+                        disabled={savingCredentials}
+                      >
+                        Save Only
+                      </button>
+                      <button
+                        type="submit"
+                        className="btn btn-primary"
+                        disabled={savingCredentials}
+                      >
+                        {savingCredentials ? (
+                          <>
+                            <RefreshCw size={14} className="spin" style={{ marginRight: 6 }} />
+                            Syncing...
+                          </>
+                        ) : (
+                          <>
+                            <RefreshCw size={14} style={{ marginRight: 6 }} />
+                            Update & Retry Sync
+                          </>
+                        )}
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="submit"
+                      className="btn btn-primary"
+                      disabled={savingCredentials}
+                    >
+                      {savingCredentials ? 'Saving...' : 'Save Credentials'}
+                    </button>
+                  )}
                 </div>
               </form>
             ) : (
