@@ -121,9 +121,12 @@ class FinTSIntegration(BrokerIntegrationBase):
             )
 
             # Resume dialog if we have dialog data
+            # resume_dialog() returns the pending TAN response
             if dialog_data:
-                self._client.resume_dialog(dialog_data)
-                logger.info("FinTS: Successfully restored client and resumed dialog")
+                tan_response = self._client.resume_dialog(dialog_data)
+                # Set init_tan_response so complete_2fa can use it
+                self._client.init_tan_response = tan_response
+                logger.info(f"FinTS: Successfully restored client and resumed dialog, tan_response={type(tan_response)}")
             else:
                 logger.info("FinTS: Successfully restored client (no dialog data)")
 
@@ -313,6 +316,12 @@ class FinTSIntegration(BrokerIntegrationBase):
 
         try:
             tan_response = self._client.init_tan_response
+
+            if not tan_response:
+                return AuthResult(
+                    success=False,
+                    error_message="Session state could not be restored. Please restart discovery."
+                )
 
             if session_data.get('decoupled'):
                 # Poll for app approval (decoupled TAN)
