@@ -52,37 +52,69 @@ class FinTSIntegration(BrokerIntegrationBase):
             # Fetch available TAN mechanisms
             self._client.fetch_tan_mechanisms()
             mechs = self._client.get_tan_mechanisms()
-            logger.info(f"Available TAN mechanisms: {mechs}")
 
-            # Prefer decoupled TAN (app-based approval, mechanism 940)
+            # Log all available mechanisms with details
+            logger.warning(f"FinTS: Available TAN mechanisms: {mechs}")
+            if isinstance(mechs, dict):
+                for key, mech in mechs.items():
+                    mech_name = getattr(mech, 'name', 'unknown') if hasattr(mech, 'name') else str(mech)
+                    is_decoupled = getattr(mech, 'decoupled', False) if hasattr(mech, 'decoupled') else False
+                    logger.warning(f"FinTS: Mechanism {key}: {mech_name}, decoupled={is_decoupled}")
+
+            # Build list of mechanism keys
             mech_keys = list(mechs.keys()) if isinstance(mechs, dict) else [str(m) for m in mechs]
-            if '940' in mech_keys:
-                self._client.set_tan_mechanism('940')
+
+            # Prefer decoupled TAN mechanisms (push notification, no manual entry needed)
+            # Common decoupled TAN mechanism IDs: 940 (PushTAN), 942, 944
+            selected_mechanism = None
+            for preferred in ['940', '942', '944', '920', '921']:
+                if preferred in mech_keys:
+                    selected_mechanism = preferred
+                    break
+
+            if selected_mechanism:
+                logger.warning(f"FinTS: Selecting decoupled TAN mechanism: {selected_mechanism}")
+                self._client.set_tan_mechanism(selected_mechanism)
             elif mech_keys:
-                # Use the first available mechanism
-                self._client.set_tan_mechanism(mech_keys[0])
+                # Fallback to first available mechanism
+                selected_mechanism = mech_keys[0]
+                logger.warning(f"FinTS: No decoupled TAN found, using first mechanism: {selected_mechanism}")
+                self._client.set_tan_mechanism(selected_mechanism)
 
             # Start the session
             self._client.__enter__()
 
             # Check if 2FA is required
             if isinstance(self._client.init_tan_response, NeedTANResponse):
-                is_decoupled = getattr(
-                    self._client.init_tan_response, 'decoupled', False
-                )
+                tan_resp = self._client.init_tan_response
+
+                # Log all attributes of the TAN response for debugging
+                tan_attrs = [attr for attr in dir(tan_resp) if not attr.startswith('_')]
+                logger.warning(f"FinTS: TAN response attributes: {tan_attrs}")
+
+                # Check decoupled status
+                is_decoupled = getattr(tan_resp, 'decoupled', False)
+                challenge_text = getattr(tan_resp, 'challenge', None)
+
+                logger.warning(f"FinTS: TAN response - decoupled={is_decoupled}, challenge={challenge_text[:100] if challenge_text else None}")
+
+                # Also check if the selected mechanism is typically decoupled
+                # Mechanisms 940, 942, 944 are usually decoupled (PushTAN)
+                if selected_mechanism in ['940', '942', '944']:
+                    logger.warning(f"FinTS: Selected mechanism {selected_mechanism} is typically decoupled, forcing decoupled=True")
+                    is_decoupled = True
 
                 if is_decoupled:
                     # Poll for app approval (decoupled TAN) — up to 5 minutes
                     logger.info("Waiting for banking app approval...")
                     max_attempts = 60  # 5 min at 5s intervals
                     for attempt in range(max_attempts):
-                        result = self._client.send_tan(
-                            self._client.init_tan_response, None
-                        )
+                        result = self._client.send_tan(tan_resp, None)
                         if not isinstance(result, NeedTANResponse):
                             self._authenticated = True
                             logger.info("App approval received.")
                             return AuthResult(success=True)
+                        tan_resp = result
                         self._client.init_tan_response = result
                         logger.debug(
                             f"Waiting for app approval... ({attempt + 1}/{max_attempts})"
@@ -95,18 +127,71 @@ class FinTSIntegration(BrokerIntegrationBase):
                     )
                 else:
                     # Manual TAN entry required — return to frontend
+
+                    # Extract all available challenge data
+                    challenge_text = getattr(tan_resp, 'challenge', None)
+                    challenge_html = getattr(tan_resp, 'challenge_html', None)
+
+                    # For photoTAN/chipTAN, the image data can be in various attributes
+                    challenge_hhduc = getattr(tan_resp, 'challenge_hhduc', None)
+                    challenge_matrix = getattr(tan_resp, 'challenge_matrix', None)
+                    challenge_raw = getattr(tan_resp, 'challenge_raw', None)
+
+                    logger.warning(f"TAN challenge - text: {bool(challenge_text)}, html: {bool(challenge_html)}, hhduc: {bool(challenge_hhduc)}, matrix: {bool(challenge_matrix)}, raw: {bool(challenge_raw)}")
+
+                    # If we have matrix data (photoTAN image), convert to displayable format
+                    if challenge_matrix:
+                        import base64
+                        logger.warning(f"PhotoTAN: challenge_matrix type={type(challenge_matrix)}, len={len(challenge_matrix) if hasattr(challenge_matrix, '__len__') else 'N/A'}")
+
+                        # Extract image data - challenge_matrix can be:
+                        # - bytes: raw image data
+                        # - str: base64 encoded
+                        # - tuple: (mime_type, image_data)
+                        img_data = None
+                        mime_type = 'image/png'
+
+                        if isinstance(challenge_matrix, tuple) and len(challenge_matrix) >= 2:
+                            # Tuple format: (mime_type, image_data)
+                            mime_type = challenge_matrix[0] or 'image/png'
+                            img_data = challenge_matrix[1]
+                            logger.warning(f"PhotoTAN: tuple format - mime={mime_type}, data_type={type(img_data)}")
+                        elif isinstance(challenge_matrix, bytes):
+                            img_data = challenge_matrix
+                        elif isinstance(challenge_matrix, str):
+                            # Already base64 encoded
+                            img_base64 = challenge_matrix
+                            challenge_html = f'<div class="phototan-challenge"><p>{challenge_text or "Scan this code with your banking app:"}</p><img src="data:image/png;base64,{img_base64}" alt="PhotoTAN" style="max-width: 250px; margin: 10px auto; display: block;" /></div>'
+                            logger.warning("PhotoTAN: Using challenge_matrix image (string)")
+                            img_data = None  # Already handled
+
+                        # Convert bytes to base64 if we have raw data
+                        if img_data is not None:
+                            if isinstance(img_data, bytes):
+                                img_base64 = base64.b64encode(img_data).decode('utf-8')
+                                challenge_html = f'<div class="phototan-challenge"><p>{challenge_text or "Scan this code with your banking app:"}</p><img src="data:{mime_type};base64,{img_base64}" alt="PhotoTAN" style="max-width: 250px; margin: 10px auto; display: block;" /></div>'
+                                logger.warning(f"PhotoTAN: Using challenge_matrix image (bytes, {len(img_data)} bytes)")
+                            elif isinstance(img_data, str):
+                                # img_data is already base64
+                                challenge_html = f'<div class="phototan-challenge"><p>{challenge_text or "Scan this code with your banking app:"}</p><img src="data:{mime_type};base64,{img_data}" alt="PhotoTAN" style="max-width: 250px; margin: 10px auto; display: block;" /></div>'
+                                logger.warning("PhotoTAN: Using challenge_matrix image (string from tuple)")
+
+                    # Fallback to HHD UC data if no matrix
+                    elif challenge_hhduc:
+                        # HHD UC is typically used for flicker code TAN generators
+                        challenge_html = f'<div class="phototan-challenge"><p>{challenge_text or "Use your TAN generator:"}</p><p class="form-hint">HHD UC Code: {challenge_hhduc}</p></div>'
+                        logger.warning("PhotoTAN: Using challenge_hhduc data")
+
                     return AuthResult(
                         success=False,
                         requires_2fa=True,
                         two_fa_type='tan',
                         session_data={'decoupled': False},
                         challenge_data={
-                            'challenge': getattr(
-                                self._client.init_tan_response, 'challenge', None
-                            ),
-                            'challenge_html': getattr(
-                                self._client.init_tan_response, 'challenge_html', None
-                            ),
+                            'challenge': challenge_text,
+                            'challenge_html': challenge_html,
+                            'challenge_hhduc': challenge_hhduc,
+                            'challenge_matrix': bool(challenge_matrix),  # Just indicate if present
                         }
                     )
 

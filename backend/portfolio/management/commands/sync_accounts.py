@@ -5,7 +5,14 @@ Usage:
     python manage.py sync_accounts
 
 This command is designed to be run as a cronjob. It will sync all accounts
-that have auto_sync_enabled=True and are not manual accounts.
+that:
+- Have auto_sync_enabled=True in user profile
+- Are not manual accounts
+- Use a broker that supports_auto_sync (no interactive 2FA required)
+
+Brokers with decoupled TAN (push notification) like DKB are supported -
+the command will wait for app approval. Brokers requiring interactive 2FA
+(e.g., Commerzbank photoTAN) are excluded.
 
 On failure, sends an email to the admin.
 """
@@ -38,9 +45,12 @@ class Command(BaseCommand):
         dry_run = options['dry_run']
 
         # Get all non-manual accounts with auto_sync enabled
+        # Only include brokers that support auto sync (decoupled TAN or no 2FA)
+        # Excludes brokers requiring interactive 2FA (e.g., photoTAN)
         accounts = FinancialAccount.objects.filter(
             is_manual=False,
             user__profile__auto_sync_enabled=True,
+            broker__supports_auto_sync=True,
         ).exclude(
             encrypted_credentials=''
         ).exclude(

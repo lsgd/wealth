@@ -44,6 +44,10 @@ class Broker(models.Model):
     country = models.CharField(max_length=2, default='DE')
     is_active = models.BooleanField(default=True)
     supports_2fa = models.BooleanField(default=False)
+    supports_auto_sync = models.BooleanField(
+        default=False,
+        help_text='Whether accounts can be synced automatically without user interaction (e.g., decoupled TAN)'
+    )
 
     # JSON schema defining required credentials
     credential_schema = models.JSONField(

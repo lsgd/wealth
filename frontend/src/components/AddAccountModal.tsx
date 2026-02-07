@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import { X, Search, Loader, Check } from 'lucide-react';
+import { X, Search, Loader, Check, Shield } from 'lucide-react';
 import {
   getBrokers,
   createAccount,
   discoverAccounts,
   createAccountsBulk,
+  completeDiscoveryAuth,
 } from '../api/client';
 
 interface Broker {
@@ -36,7 +37,12 @@ interface Props {
   onCreated: () => void;
 }
 
-type Step = 'credentials' | 'discovering' | 'select' | 'manual' | 'confirm-skip';
+type Step = 'credentials' | 'discovering' | 'select' | 'manual' | 'confirm-skip' | '2fa';
+
+interface ChallengeData {
+  challenge?: string;
+  challenge_html?: string;
+}
 
 export default function AddAccountModal({ onClose, onCreated }: Props) {
   const [brokers, setBrokers] = useState<Broker[]>([]);
@@ -60,6 +66,13 @@ export default function AddAccountModal({ onClose, onCreated }: Props) {
   const [skipName, setSkipName] = useState('');
   const [skipCurrency, setSkipCurrency] = useState('CHF');
   const [skipType, setSkipType] = useState('brokerage');
+
+  // 2FA state
+  const [sessionToken, setSessionToken] = useState('');
+  const [twoFaType, setTwoFaType] = useState('');
+  const [challengeData, setChallengeData] = useState<ChallengeData | null>(null);
+  const [tanCode, setTanCode] = useState('');
+  const [submitting2fa, setSubmitting2fa] = useState(false);
 
   useEffect(() => {
     getBrokers()
@@ -150,8 +163,12 @@ export default function AddAccountModal({ onClose, onCreated }: Props) {
     try {
       const result = await discoverAccounts(selectedBroker.code, credentials);
       if (result.status === 'pending_auth') {
-        setError('Manual TAN entry required. This authentication method is not yet supported.');
-        setStep('credentials');
+        // 2FA required - show TAN entry
+        setSessionToken(result.session_token || '');
+        setTwoFaType(result.two_fa_type || 'tan');
+        setChallengeData(result.challenge || null);
+        setTanCode('');
+        setStep('2fa');
         return;
       }
       setDiscovered(result.accounts);
@@ -160,6 +177,33 @@ export default function AddAccountModal({ onClose, onCreated }: Props) {
     } catch (err: any) {
       setError(err.message || 'Discovery failed');
       setStep('credentials');
+    }
+  };
+
+  const handleSubmit2fa = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!sessionToken) {
+      setError('Session expired. Please restart discovery.');
+      setStep('credentials');
+      return;
+    }
+    setError('');
+    setSubmitting2fa(true);
+    try {
+      const result = await completeDiscoveryAuth(sessionToken, tanCode);
+      if (result.status === 'pending_auth') {
+        // Still pending (e.g., decoupled TAN waiting)
+        setChallengeData(result.challenge || null);
+        setError(result.message || 'Still waiting for authentication...');
+        return;
+      }
+      setDiscovered(result.accounts);
+      setSelected(new Set(result.accounts.map((a: DiscoveredAccount) => a.identifier)));
+      setStep('select');
+    } catch (err: any) {
+      setError(err.message || 'Authentication failed');
+    } finally {
+      setSubmitting2fa(false);
     }
   };
 
@@ -215,6 +259,7 @@ export default function AddAccountModal({ onClose, onCreated }: Props) {
           <h3>
             {step === 'select' ? 'Select Accounts' :
              step === 'discovering' ? 'Discovering Accounts' :
+             step === '2fa' ? 'Authentication Required' :
              step === 'confirm-skip' ? 'Add Manual Account' :
              'Add Account'}
           </h3>
@@ -236,6 +281,82 @@ export default function AddAccountModal({ onClose, onCreated }: Props) {
               </p>
             )}
           </div>
+        )}
+
+        {/* Step: 2FA / TAN entry */}
+        {step === '2fa' && (
+          <form onSubmit={handleSubmit2fa}>
+            <div className="twofa-header">
+              <Shield size={32} />
+              <h4>Two-Factor Authentication</h4>
+            </div>
+
+            {challengeData?.challenge_html ? (
+              <div
+                className="twofa-challenge"
+                dangerouslySetInnerHTML={{ __html: challengeData.challenge_html }}
+              />
+            ) : challengeData?.challenge ? (
+              <div className="twofa-challenge">
+                <p className="form-hint">{challengeData.challenge}</p>
+              </div>
+            ) : (
+              <p className="form-hint">
+                {twoFaType === 'tan'
+                  ? 'Please enter the TAN code from your banking app or TAN generator.'
+                  : 'Please enter the authentication code.'}
+              </p>
+            )}
+
+            <div className="form-group">
+              <label htmlFor="tanCode">
+                {twoFaType === 'tan' ? 'TAN Code' : 'Authentication Code'}
+              </label>
+              <input
+                id="tanCode"
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                autoComplete="one-time-code"
+                autoFocus
+                required
+                value={tanCode}
+                onChange={(e) => setTanCode(e.target.value)}
+                placeholder="Enter code..."
+                disabled={submitting2fa}
+              />
+            </div>
+
+            <div className="form-actions">
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => {
+                  setSessionToken('');
+                  setChallengeData(null);
+                  setTanCode('');
+                  setStep('credentials');
+                }}
+                disabled={submitting2fa}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={submitting2fa || !tanCode.trim()}
+              >
+                {submitting2fa ? (
+                  <>
+                    <Loader size={14} className="spin" />
+                    Verifying...
+                  </>
+                ) : (
+                  'Verify'
+                )}
+              </button>
+            </div>
+          </form>
         )}
 
         {/* Step: Credentials */}

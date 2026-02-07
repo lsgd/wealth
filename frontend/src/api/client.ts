@@ -151,6 +151,18 @@ export async function discoverAccounts(brokerCode: string, credentials: Record<s
   return data;
 }
 
+export async function completeDiscoveryAuth(sessionToken: string, authCode: string) {
+  const res = await fetchWithAuth('/api/brokers/discover/complete-auth/', {
+    method: 'POST',
+    body: JSON.stringify({ session_token: sessionToken, auth_code: authCode }),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || 'Authentication failed');
+  }
+  return data;
+}
+
 export async function createAccountsBulk(
   brokerCode: string,
   credentials: Record<string, string>,

@@ -14,6 +14,7 @@
       "country": "DE",
       "is_active": true,
       "supports_2fa": true,
+      "supports_auto_sync": true,
       "credential_schema": {
         "type": "object",
         "required": ["username", "pin"],
@@ -50,6 +51,7 @@
       "country": "DE",
       "is_active": true,
       "supports_2fa": true,
+      "supports_auto_sync": false,
       "credential_schema": {
         "type": "object",
         "required": ["username", "pin"],
@@ -86,34 +88,35 @@
       "country": "US",
       "is_active": true,
       "supports_2fa": true,
+      "supports_auto_sync": false,
       "credential_schema": {
         "type": "object",
-        "required": [],
+        "required": ["jwt_token", "employee_id"],
         "properties": {
           "jwt_token": {
             "type": "string",
-            "title": "JWT Token (Recommended)",
+            "title": "JWT Token",
             "format": "password",
-            "description": "From browser DevTools: Network > graphql request > 'authorization' header"
+            "description": "Required. From browser DevTools > Network > filter 'graphql' > Headers > 'authorization' value"
           },
           "employee_id": {
             "type": "string",
             "title": "Employee ID",
-            "description": "From browser DevTools: Network > graphql request > 'employeeId' header"
+            "description": "Required. From same request's 'employeeid' header (NOT the JWT 'sub' claim)"
           },
-          "account_number": {
+          "username": {
             "type": "string",
-            "title": "Account Number (Alternative)",
-            "description": "Your participant number (login may not retrieve balance)"
+            "title": "Username (optional)",
+            "description": "Your Morgan Stanley at Work login - for reference only, login disabled due to JWT generation"
           },
           "password": {
             "type": "string",
-            "title": "Password",
+            "title": "Password (optional)",
             "format": "password",
-            "description": "Your Morgan Stanley password"
+            "description": "Your password - for reference only, login disabled due to JWT generation"
           }
         },
-        "description": "Recommended: Use JWT Token + Employee ID from browser DevTools. Alternative: Account number + password."
+        "description": "JWT Token expires after ~1 hour. To get credentials: 1) Log into atwork.morganstanley.com in browser, 2) Open DevTools (F12), 3) Go to Network tab, 4) Filter by 'graphql', 5) Copy 'authorization' and 'employeeid' header values."
       },
       "created_at": "2026-01-20T00:00:00Z",
       "updated_at": "2026-01-20T00:00:00Z"
@@ -134,6 +137,7 @@
       "country": "CH",
       "is_active": true,
       "supports_2fa": true,
+      "supports_auto_sync": true,
       "credential_schema": {
         "type": "object",
         "required": ["username", "password", "totp_secret"],
@@ -175,6 +179,7 @@
       "country": "CH",
       "is_active": true,
       "supports_2fa": false,
+      "supports_auto_sync": true,
       "credential_schema": {
         "type": "object",
         "required": ["username", "password"],
@@ -211,6 +216,7 @@
       "country": "",
       "is_active": true,
       "supports_2fa": false,
+      "supports_auto_sync": false,
       "credential_schema": {},
       "created_at": "2026-01-20T00:00:00Z",
       "updated_at": "2026-01-20T00:00:00Z"
@@ -231,6 +237,7 @@
       "country": "US",
       "is_active": true,
       "supports_2fa": false,
+      "supports_auto_sync": true,
       "credential_schema": {
         "type": "object",
         "required": ["flex_token", "query_id"],

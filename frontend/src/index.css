@@ -870,6 +870,35 @@ a:hover {
   white-space: nowrap;
 }
 
+/* 2FA / TAN entry */
+.twofa-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 0;
+  color: var(--color-primary);
+}
+
+.twofa-header h4 {
+  margin: 0;
+  color: var(--color-text);
+}
+
+.twofa-challenge {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+  text-align: center;
+}
+
+.twofa-challenge img {
+  max-width: 100%;
+  height: auto;
+}
+
 /* Breakdown chart custom legend */
 .breakdown-content {
   display: flex;

@@ -1,8 +1,33 @@
 import logging
+import uuid
 from datetime import date, timedelta
 from decimal import Decimal
+from threading import Lock
+from time import time
 
 logger = logging.getLogger(__name__)
+
+# In-memory store for pending discovery sessions (2FA flows)
+# Key: session_token, Value: {'integration': ..., 'broker_code': ..., 'created_at': ...}
+# Sessions expire after 5 minutes
+_discovery_sessions: dict = {}
+_discovery_sessions_lock = Lock()
+DISCOVERY_SESSION_TIMEOUT = 300  # 5 minutes
+
+
+def _cleanup_expired_sessions():
+    """Remove expired discovery sessions."""
+    now = time()
+    with _discovery_sessions_lock:
+        expired = [k for k, v in _discovery_sessions.items()
+                   if now - v.get('created_at', 0) > DISCOVERY_SESSION_TIMEOUT]
+        for k in expired:
+            session = _discovery_sessions.pop(k, None)
+            if session and session.get('integration'):
+                try:
+                    session['integration'].close()
+                except Exception:
+                    pass
 
 from django.utils import timezone
 from rest_framework import generics, status
@@ -765,14 +790,28 @@ class BrokerDiscoverView(APIView):
                 status=status.HTTP_404_NOT_FOUND
             )
 
+        # Cleanup expired sessions periodically
+        _cleanup_expired_sessions()
+
         try:
             integration = get_broker_integration(broker, credentials)
             auth_result = integration.authenticate()
 
             if not auth_result.success:
                 if auth_result.requires_2fa:
+                    # Generate session token and store integration for 2FA completion
+                    session_token = str(uuid.uuid4())
+                    with _discovery_sessions_lock:
+                        _discovery_sessions[session_token] = {
+                            'integration': integration,
+                            'broker_code': broker_code,
+                            'session_data': auth_result.session_data or {},
+                            'created_at': time(),
+                        }
+
                     return Response({
                         'status': 'pending_auth',
+                        'session_token': session_token,
                         'message': 'Two-factor authentication required',
                         'two_fa_type': auth_result.two_fa_type,
                         'challenge': auth_result.challenge_data,
@@ -815,6 +854,112 @@ class BrokerDiscoverView(APIView):
         except Exception as e:
             return Response(
                 {'error': f'Discovery failed: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class BrokerDiscoverCompleteAuthView(APIView):
+    """Complete 2FA authentication for broker discovery."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        session_token = request.data.get('session_token')
+        auth_code = request.data.get('auth_code')
+
+        if not session_token:
+            return Response(
+                {'error': 'session_token is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Get the stored session
+        with _discovery_sessions_lock:
+            session = _discovery_sessions.get(session_token)
+
+        if not session:
+            return Response(
+                {'error': 'Session expired or invalid. Please restart discovery.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Check if session is expired
+        if time() - session.get('created_at', 0) > DISCOVERY_SESSION_TIMEOUT:
+            with _discovery_sessions_lock:
+                expired_session = _discovery_sessions.pop(session_token, None)
+                if expired_session and expired_session.get('integration'):
+                    try:
+                        expired_session['integration'].close()
+                    except Exception:
+                        pass
+            return Response(
+                {'error': 'Session expired. Please restart discovery.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        integration = session.get('integration')
+        session_data = session.get('session_data', {})
+
+        try:
+            # Complete 2FA
+            auth_result = integration.complete_2fa(auth_code, session_data)
+
+            if not auth_result.success:
+                if auth_result.requires_2fa:
+                    # Still needs 2FA (e.g., waiting for app approval)
+                    return Response({
+                        'status': 'pending_auth',
+                        'session_token': session_token,
+                        'message': auth_result.error_message or 'Still waiting for authentication',
+                        'two_fa_type': auth_result.two_fa_type,
+                        'challenge': auth_result.challenge_data,
+                    })
+                return Response(
+                    {'error': auth_result.error_message or 'Authentication failed'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Auth succeeded — discover accounts and fetch balances
+            accounts = integration.get_accounts()
+
+            account_list = []
+            for a in accounts:
+                entry = {
+                    'identifier': a.identifier,
+                    'name': a.name,
+                    'account_type': a.account_type,
+                    'currency': a.currency,
+                    'balance': None,
+                }
+                try:
+                    balance_info = integration.get_balance(a.identifier)
+                    entry['balance'] = float(balance_info.balance)
+                    entry['currency'] = balance_info.currency
+                    entry['balance_date'] = balance_info.balance_date.isoformat()
+                except Exception as e:
+                    logger.warning(f"Failed to fetch balance for {a.identifier}: {e}")
+                account_list.append(entry)
+
+            # Cleanup session
+            with _discovery_sessions_lock:
+                _discovery_sessions.pop(session_token, None)
+            integration.close()
+
+            return Response({
+                'status': 'success',
+                'accounts': account_list,
+            })
+
+        except Exception as e:
+            logger.exception("Discovery 2FA completion failed")
+            # Cleanup on error
+            with _discovery_sessions_lock:
+                _discovery_sessions.pop(session_token, None)
+            try:
+                integration.close()
+            except Exception:
+                pass
+            return Response(
+                {'error': f'Authentication failed: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
