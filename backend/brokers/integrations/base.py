@@ -1,0 +1,128 @@
+"""
+Abstract base class for broker integrations.
+"""
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+from datetime import date
+from decimal import Decimal
+from typing import Any, Dict, List, Optional
+
+
+@dataclass
+class AccountInfo:
+    """Standardized account information returned by brokers."""
+    identifier: str  # IBAN, account number, or external ID
+    name: str  # Account name/description
+    account_type: str  # checking, savings, brokerage, etc.
+    currency: str  # Account currency (ISO 4217)
+
+
+@dataclass
+class BalanceInfo:
+    """Standardized balance information returned by brokers."""
+    balance: Decimal
+    currency: str
+    balance_date: date
+    available_balance: Optional[Decimal] = None
+    raw_data: Optional[Dict[str, Any]] = None
+
+
+@dataclass
+class PositionInfo:
+    """Standardized position information for investment accounts."""
+    symbol: str
+    name: str
+    quantity: Decimal
+    price_per_unit: Decimal
+    market_value: Decimal
+    currency: str
+    isin: Optional[str] = None
+    cost_basis: Optional[Decimal] = None
+    asset_class: str = 'other'
+
+
+@dataclass
+class AuthResult:
+    """Result of authentication attempt."""
+    success: bool
+    requires_2fa: bool = False
+    two_fa_type: Optional[str] = None  # 'app', 'sms', 'tan', etc.
+    session_data: Optional[Dict[str, Any]] = None
+    error_message: Optional[str] = None
+    challenge_data: Optional[Dict[str, Any]] = None  # For TAN challenges
+
+
+class BrokerIntegrationBase(ABC):
+    """Abstract base class for broker integrations."""
+
+    def __init__(self, credentials: Dict[str, Any]):
+        self.credentials = credentials
+        self._session = None
+
+    @abstractmethod
+    def authenticate(self) -> AuthResult:
+        """
+        Authenticate with the broker.
+        Returns AuthResult indicating success or if 2FA is needed.
+        """
+        pass
+
+    @abstractmethod
+    def complete_2fa(
+        self,
+        auth_code: Optional[str],
+        session_data: Dict[str, Any]
+    ) -> AuthResult:
+        """
+        Complete 2FA authentication.
+        For decoupled auth (app approval), auth_code may be None.
+        """
+        pass
+
+    @abstractmethod
+    def get_accounts(self) -> List[AccountInfo]:
+        """
+        Fetch list of accounts from the broker.
+        Must be authenticated first.
+        """
+        pass
+
+    @abstractmethod
+    def get_balance(self, account_identifier: str) -> BalanceInfo:
+        """
+        Fetch balance for a specific account.
+        Must be authenticated first.
+        """
+        pass
+
+    def get_positions(self, account_identifier: str) -> List[PositionInfo]:
+        """
+        Fetch positions for an investment account.
+        Override in subclasses that support this.
+        """
+        return []
+
+    def get_historical_balances(
+        self,
+        account_identifier: str,
+        start_date: date,
+        end_date: date
+    ) -> List[BalanceInfo]:
+        """
+        Fetch historical balances for an account.
+        Override in subclasses that support historical data (e.g., IBKR Flex).
+        Returns empty list by default.
+        """
+        return []
+
+    def supports_historical_data(self) -> bool:
+        """
+        Returns True if this integration supports fetching historical data.
+        Override in subclasses that support this.
+        """
+        return False
+
+    def close(self):
+        """Clean up any resources (sessions, connections)."""
+        if self._session:
+            self._session = None

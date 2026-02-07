@@ -1,0 +1,118 @@
+import { useCallback, useEffect, useState } from 'react';
+import {
+  getWealthSummary,
+  getWealthHistory,
+  getWealthBreakdown,
+  getAccounts,
+} from '../api/client';
+import WealthSummaryCard from '../components/WealthSummaryCard';
+import WealthChart from '../components/WealthChart';
+import BreakdownChart from '../components/BreakdownChart';
+import RecentChanges from '../components/RecentChanges';
+import AccountsTable from '../components/AccountsTable';
+
+interface Summary {
+  total_wealth: number;
+  base_currency: string;
+  accounts: any[];
+  account_count: number;
+}
+
+interface History {
+  history: { date: string; total_wealth: number }[];
+  base_currency: string;
+}
+
+interface Breakdown {
+  breakdown: { category: string; amount: number; percentage: number }[];
+  base_currency: string;
+}
+
+export default function DashboardPage() {
+  const [summary, setSummary] = useState<Summary | null>(null);
+  const [history, setHistory] = useState<History | null>(null);
+  const [breakdown, setBreakdown] = useState<Breakdown | null>(null);
+  const [accounts, setAccounts] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const fetchAll = useCallback(async () => {
+    try {
+      const [s, h, b, a] = await Promise.all([
+        getWealthSummary(),
+        getWealthHistory(365),
+        getWealthBreakdown('broker'),
+        getAccounts(),
+      ]);
+      setSummary(s);
+      setHistory(h);
+      setBreakdown(b);
+      setAccounts(a.results ?? a);
+    } catch {
+      // Will show empty state
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchAll();
+  }, [fetchAll]);
+
+  const handleRangeChange = async (days: number, granularity: 'daily' | 'monthly') => {
+    try {
+      const h = await getWealthHistory(days, granularity);
+      setHistory(h);
+    } catch {
+      // keep current state
+    }
+  };
+
+  const handleGroupChange = async (by: string) => {
+    try {
+      const b = await getWealthBreakdown(by);
+      setBreakdown(b);
+    } catch {
+      // keep current state
+    }
+  };
+
+  if (loading) {
+    return <div className="loading">Loading dashboard...</div>;
+  }
+
+  const baseCurrency = summary?.base_currency ?? 'CHF';
+
+  return (
+    <div className="dashboard">
+      <WealthSummaryCard
+        totalWealth={summary?.total_wealth ?? 0}
+        baseCurrency={baseCurrency}
+        accountCount={summary?.account_count ?? 0}
+      />
+
+      <WealthChart
+        history={history?.history ?? []}
+        baseCurrency={baseCurrency}
+        onRangeChange={handleRangeChange}
+      />
+
+      <div className="dashboard-grid">
+        <BreakdownChart
+          breakdown={breakdown?.breakdown ?? []}
+          baseCurrency={baseCurrency}
+          onGroupChange={handleGroupChange}
+        />
+        <RecentChanges
+          history={history?.history ?? []}
+          baseCurrency={baseCurrency}
+        />
+      </div>
+
+      <AccountsTable
+        accounts={accounts}
+        baseCurrency={baseCurrency}
+        onRefresh={fetchAll}
+      />
+    </div>
+  );
+}
