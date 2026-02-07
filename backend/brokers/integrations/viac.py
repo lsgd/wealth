@@ -454,7 +454,7 @@ class VIACIntegration(BrokerIntegrationBase):
         )
 
     def supports_historical_data(self) -> bool:
-        """VIAC may provide performance history."""
+        """VIAC provides daily wealth history via /rest/web/wealth/summary."""
         return True
 
     def get_historical_balances(
@@ -464,9 +464,12 @@ class VIACIntegration(BrokerIntegrationBase):
         end_date: date
     ) -> List[BalanceInfo]:
         """
-        Fetch historical balances from VIAC performance history.
-        Limited to 1 API request to minimize load.
+        Fetch historical balances from VIAC wealth/summary endpoint.
+
+        Note: This endpoint returns historical data for ALL portfolios combined,
+        not per-portfolio. The account_identifier is ignored.
         """
+        del account_identifier  # Unused - VIAC returns combined data for all portfolios
         from datetime import datetime
 
         if not self._authenticated:
@@ -476,41 +479,37 @@ class VIACIntegration(BrokerIntegrationBase):
 
         try:
             response = self._session.get(
-                f"{self.BASE_URL}/rest/web/portfolio/{account_identifier}/performance/history",
-                params={
-                    'from': start_date.isoformat(),
-                    'to': end_date.isoformat(),
-                },
+                f"{self.BASE_URL}/rest/web/wealth/summary",
                 headers={
                     'Accept': 'application/json',
                     'Referer': f"{self.BASE_URL}/",
+                    'X-Same-Domain': '1',
                 },
                 timeout=30
             )
 
             if response.status_code != 200:
-                logger.debug(f"VIAC historical data not available: {response.status_code}")
+                logger.debug(f"VIAC wealth/summary not available: {response.status_code}")
                 return []
 
             data = response.json()
             historical = []
 
-            # Parse response - supports list or dict with history/data key
-            entries = data if isinstance(data, list) else data.get('history', data.get('data', []))
-            for entry in entries:
-                entry_date = entry.get('date') or entry.get('timestamp')
-                entry_value = entry.get('value') or entry.get('totalValue') or entry.get('balance')
-                if entry_date and entry_value:
+            # Parse dailyWealth array: [{date: "YYYY-MM-DD", value: number}, ...]
+            daily_wealth = data.get('dailyWealth', [])
+            for entry in daily_wealth:
+                entry_date = entry.get('date')
+                entry_value = entry.get('value')
+                if entry_date and entry_value is not None:
                     try:
-                        if isinstance(entry_date, str):
-                            bal_date = datetime.strptime(entry_date[:10], '%Y-%m-%d').date()
-                        else:
-                            bal_date = date.fromtimestamp(entry_date / 1000)
-                        historical.append(BalanceInfo(
-                            balance=Decimal(str(entry_value)),
-                            currency='CHF',
-                            balance_date=bal_date
-                        ))
+                        bal_date = datetime.strptime(entry_date[:10], '%Y-%m-%d').date()
+                        # Filter by date range
+                        if start_date <= bal_date <= end_date:
+                            historical.append(BalanceInfo(
+                                balance=Decimal(str(entry_value)),
+                                currency='CHF',
+                                balance_date=bal_date
+                            ))
                     except (ValueError, TypeError):
                         continue
 

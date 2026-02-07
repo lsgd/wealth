@@ -533,7 +533,7 @@ class TrueWealthIntegration(BrokerIntegrationBase):
         )
 
     def supports_historical_data(self) -> bool:
-        """TrueWealth provides performance history."""
+        """TrueWealth provides daily portfolio evolution via /evolution endpoint."""
         return True
 
     def get_historical_balances(
@@ -543,8 +543,9 @@ class TrueWealthIntegration(BrokerIntegrationBase):
         end_date: date
     ) -> List[BalanceInfo]:
         """
-        Fetch historical balances from TrueWealth performance history.
-        Limited to 1 API request to minimize load.
+        Fetch historical balances from TrueWealth evolution endpoint.
+
+        The /evolution endpoint returns daily performance data with vEnd (end-of-day value).
         """
         from datetime import datetime
 
@@ -555,11 +556,7 @@ class TrueWealthIntegration(BrokerIntegrationBase):
 
         try:
             response = self._session.get(
-                f"{self.BASE_URL}/api/portfolios/{account_identifier}/performance/history",
-                params={
-                    'from': start_date.isoformat(),
-                    'to': end_date.isoformat(),
-                },
+                f"{self.BASE_URL}/api/portfolios/{account_identifier}/evolution",
                 headers={
                     'Referer': f"{self.BASE_URL}/app/overview",
                     'X-XSRF-Token': self._xsrf_token or '',
@@ -568,44 +565,29 @@ class TrueWealthIntegration(BrokerIntegrationBase):
             )
 
             if response.status_code != 200:
-                logger.debug(f"TrueWealth historical data not available: {response.status_code}")
+                logger.debug(f"TrueWealth evolution not available: {response.status_code}")
                 return []
 
             data = response.json()
             historical = []
 
-            # Parse response - supports list [{date, value}, ...] or dict {dates: [], values: []}
-            if isinstance(data, list):
-                for entry in data:
-                    entry_date = entry.get('date') or entry.get('timestamp')
-                    entry_value = entry.get('value') or entry.get('netValue') or entry.get('totalValue')
-                    if entry_date and entry_value:
-                        try:
-                            if isinstance(entry_date, str):
-                                bal_date = datetime.strptime(entry_date[:10], '%Y-%m-%d').date()
-                            else:
-                                bal_date = date.fromtimestamp(entry_date / 1000)  # ms timestamp
+            # Parse performance array: [{date: "YYYY-MM-DD", vEnd: number}, ...]
+            performance = data.get('performance', [])
+            currency = data.get('currency', 'CHF')
+
+            for entry in performance:
+                entry_date = entry.get('date')
+                entry_value = entry.get('vEnd')  # End-of-day portfolio value
+                if entry_date and entry_value is not None:
+                    try:
+                        bal_date = datetime.strptime(entry_date[:10], '%Y-%m-%d').date()
+                        # Filter by date range
+                        if start_date <= bal_date <= end_date:
                             historical.append(BalanceInfo(
                                 balance=Decimal(str(entry_value)),
-                                currency='CHF',
+                                currency=currency,
                                 balance_date=bal_date
                             ))
-                        except (ValueError, TypeError):
-                            continue
-            elif isinstance(data, dict):
-                dates = data.get('dates', [])
-                values = data.get('values', data.get('netValues', []))
-                for d, v in zip(dates, values):
-                    try:
-                        if isinstance(d, str):
-                            bal_date = datetime.strptime(d[:10], '%Y-%m-%d').date()
-                        else:
-                            bal_date = date.fromtimestamp(d / 1000)
-                        historical.append(BalanceInfo(
-                            balance=Decimal(str(v)),
-                            currency='CHF',
-                            balance_date=bal_date
-                        ))
                     except (ValueError, TypeError):
                         continue
 
