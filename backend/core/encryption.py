@@ -30,6 +30,9 @@ def decrypt_credentials(encrypted_data: bytes) -> dict:
     """Decrypt bytes to credentials dictionary."""
     if not encrypted_data:
         return {}
+    # Handle memoryview from Django BinaryField
+    if isinstance(encrypted_data, memoryview):
+        encrypted_data = bytes(encrypted_data)
     f = Fernet(get_encryption_key())
     decrypted = f.decrypt(encrypted_data)
     return json.loads(decrypted.decode())
