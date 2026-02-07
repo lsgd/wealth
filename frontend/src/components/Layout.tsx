@@ -5,6 +5,10 @@ import { useAuth } from '../contexts/AuthContext';
 export default function Layout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
 
+  const displayName = user
+    ? [user.first_name, user.last_name].filter(Boolean).join(' ') || user.username
+    : '';
+
   return (
     <div className="app-layout">
       <header className="app-header">
@@ -14,7 +18,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         </Link>
         {user && (
           <div className="header-right">
-            <span className="header-user">{user.username}</span>
+            <span className="header-user">{displayName}</span>
             <Link to="/settings" className="btn btn-ghost" title="Settings">
               <Settings size={18} />
             </Link>
