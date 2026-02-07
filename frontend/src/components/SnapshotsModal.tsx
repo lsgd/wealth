@@ -41,7 +41,10 @@ export default function SnapshotsModal({
 }: Props) {
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState('');
+  const [nextPage, setNextPage] = useState<number | null>(null);
+  const [totalCount, setTotalCount] = useState(0);
 
   // Edit state
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -60,16 +63,36 @@ export default function SnapshotsModal({
   const [addDate, setAddDate] = useState(new Date().toISOString().slice(0, 10));
   const [adding, setAdding] = useState(false);
 
-  const fetchSnapshots = async () => {
+  const fetchSnapshots = async (page = 1, append = false) => {
     try {
-      const data = await getSnapshots(accountId);
+      const data = await getSnapshots(accountId, page);
       // Handle paginated response (results array) or plain array
-      setSnapshots(Array.isArray(data) ? data : data.results || []);
+      if (Array.isArray(data)) {
+        setSnapshots(data);
+        setNextPage(null);
+        setTotalCount(data.length);
+      } else {
+        const results = data.results || [];
+        if (append) {
+          setSnapshots(prev => [...prev, ...results]);
+        } else {
+          setSnapshots(results);
+        }
+        setNextPage(data.next ? page + 1 : null);
+        setTotalCount(data.count || results.length);
+      }
     } catch (err: any) {
       setError(err.message || 'Failed to load snapshots');
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
+  };
+
+  const loadMore = async () => {
+    if (!nextPage || loadingMore) return;
+    setLoadingMore(true);
+    await fetchSnapshots(nextPage, true);
   };
 
   useEffect(() => {
@@ -209,132 +232,145 @@ export default function SnapshotsModal({
                 No snapshots yet.
               </p>
             ) : (
-              <div className="table-wrapper">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Date</th>
-                      <th className="text-right">Balance</th>
-                      <th className="text-right">{baseCurrency}</th>
-                      <th>Source</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {snapshots.map((snap) => (
-                      <tr key={snap.id}>
-                        {editingId === snap.id ? (
-                          <>
-                            <td>
-                              <input
-                                type="date"
-                                value={editDate}
-                                onChange={(e) => setEditDate(e.target.value)}
-                                className="snapshot-input-sm"
-                              />
-                            </td>
-                            <td>
-                              <div className="snapshot-edit-balance">
+              <>
+                <div className="table-wrapper">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th className="text-right">Balance</th>
+                        <th className="text-right">{baseCurrency}</th>
+                        <th>Source</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {snapshots.map((snap) => (
+                        <tr key={snap.id}>
+                          {editingId === snap.id ? (
+                            <>
+                              <td>
                                 <input
-                                  type="number"
-                                  step="0.01"
-                                  value={editBalance}
-                                  onChange={(e) => setEditBalance(e.target.value)}
+                                  type="date"
+                                  value={editDate}
+                                  onChange={(e) => setEditDate(e.target.value)}
                                   className="snapshot-input-sm"
                                 />
-                                <select
-                                  value={editCurrency}
-                                  onChange={(e) => setEditCurrency(e.target.value)}
-                                  className="snapshot-select-sm"
-                                >
-                                  <option value="EUR">EUR</option>
-                                  <option value="USD">USD</option>
-                                  <option value="CHF">CHF</option>
-                                  <option value="GBP">GBP</option>
-                                </select>
-                              </div>
-                            </td>
-                            <td className="text-right mono">—</td>
-                            <td>{snap.snapshot_source}</td>
-                            <td>
-                              <div className="action-buttons">
-                                <button
-                                  className="btn btn-sm btn-ghost"
-                                  onClick={handleUpdate}
-                                  disabled={saving}
-                                  title="Save"
-                                >
-                                  <Check size={14} />
-                                </button>
-                                <button
-                                  className="btn btn-sm btn-ghost"
-                                  onClick={cancelEdit}
-                                  title="Cancel"
-                                >
-                                  <XCircle size={14} />
-                                </button>
-                              </div>
-                            </td>
-                          </>
-                        ) : (
-                          <>
-                            <td>{snap.snapshot_date}</td>
-                            <td className="text-right mono">
-                              {formatCurrency(parseFloat(snap.balance), snap.currency)}
-                            </td>
-                            <td className="text-right mono">
-                              {snap.balance_base_currency
-                                ? formatCurrency(parseFloat(snap.balance_base_currency), baseCurrency)
-                                : '—'}
-                            </td>
-                            <td>
-                              <span className={`source-badge source-${snap.snapshot_source}`}>
-                                {snap.snapshot_source}
-                              </span>
-                            </td>
-                            <td>
-                              {deleteId === snap.id ? (
-                                <div className="action-buttons">
-                                  <button
-                                    className="btn btn-sm btn-danger"
-                                    onClick={handleDelete}
-                                    disabled={deleting}
+                              </td>
+                              <td>
+                                <div className="snapshot-edit-balance">
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    value={editBalance}
+                                    onChange={(e) => setEditBalance(e.target.value)}
+                                    className="snapshot-input-sm"
+                                  />
+                                  <select
+                                    value={editCurrency}
+                                    onChange={(e) => setEditCurrency(e.target.value)}
+                                    className="snapshot-select-sm"
                                   >
-                                    {deleting ? '...' : 'Confirm'}
-                                  </button>
-                                  <button
-                                    className="btn btn-sm btn-ghost"
-                                    onClick={() => setDeleteId(null)}
-                                  >
-                                    Cancel
-                                  </button>
+                                    <option value="EUR">EUR</option>
+                                    <option value="USD">USD</option>
+                                    <option value="CHF">CHF</option>
+                                    <option value="GBP">GBP</option>
+                                  </select>
                                 </div>
-                              ) : (
+                              </td>
+                              <td className="text-right mono">—</td>
+                              <td>{snap.snapshot_source}</td>
+                              <td>
                                 <div className="action-buttons">
                                   <button
                                     className="btn btn-sm btn-ghost"
-                                    onClick={() => startEdit(snap)}
-                                    title="Edit"
+                                    onClick={handleUpdate}
+                                    disabled={saving}
+                                    title="Save"
                                   >
-                                    <Pencil size={14} />
+                                    <Check size={14} />
                                   </button>
                                   <button
-                                    className="btn btn-sm btn-ghost btn-danger"
-                                    onClick={() => setDeleteId(snap.id)}
-                                    title="Delete"
+                                    className="btn btn-sm btn-ghost"
+                                    onClick={cancelEdit}
+                                    title="Cancel"
                                   >
-                                    <Trash2 size={14} />
+                                    <XCircle size={14} />
                                   </button>
                                 </div>
-                              )}
-                            </td>
-                          </>
-                        )}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                              </td>
+                            </>
+                          ) : (
+                            <>
+                              <td>{snap.snapshot_date}</td>
+                              <td className="text-right mono">
+                                {formatCurrency(parseFloat(snap.balance), snap.currency)}
+                              </td>
+                              <td className="text-right mono">
+                                {snap.balance_base_currency
+                                  ? formatCurrency(parseFloat(snap.balance_base_currency), baseCurrency)
+                                  : '—'}
+                              </td>
+                              <td>
+                                <span className={`source-badge source-${snap.snapshot_source}`}>
+                                  {snap.snapshot_source}
+                                </span>
+                              </td>
+                              <td>
+                                {deleteId === snap.id ? (
+                                  <div className="action-buttons">
+                                    <button
+                                      className="btn btn-sm btn-danger"
+                                      onClick={handleDelete}
+                                      disabled={deleting}
+                                    >
+                                      {deleting ? '...' : 'Confirm'}
+                                    </button>
+                                    <button
+                                      className="btn btn-sm btn-ghost"
+                                      onClick={() => setDeleteId(null)}
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <div className="action-buttons">
+                                    <button
+                                      className="btn btn-sm btn-ghost"
+                                      onClick={() => startEdit(snap)}
+                                      title="Edit"
+                                    >
+                                      <Pencil size={14} />
+                                    </button>
+                                    <button
+                                      className="btn btn-sm btn-ghost btn-danger"
+                                      onClick={() => setDeleteId(snap.id)}
+                                      title="Delete"
+                                    >
+                                      <Trash2 size={14} />
+                                    </button>
+                                  </div>
+                                )}
+                              </td>
+                            </>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {nextPage && (
+                  <div style={{ padding: '12px 16px', textAlign: 'center', borderTop: '1px solid var(--color-border)' }}>
+                    <button
+                      className="btn btn-ghost"
+                      onClick={loadMore}
+                      disabled={loadingMore}
+                    >
+                      {loadingMore ? 'Loading...' : `Load More (${snapshots.length} of ${totalCount})`}
+                    </button>
+                  </div>
+                )}
+              </>
             )}
           </>
         )}

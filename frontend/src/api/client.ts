@@ -248,8 +248,9 @@ export async function addSnapshot(
   return res.json();
 }
 
-export async function getSnapshots(accountId: number) {
-  const res = await fetchWithAuth(`/api/accounts/${accountId}/snapshots/`);
+export async function getSnapshots(accountId: number, page = 1) {
+  const url = `/api/accounts/${accountId}/snapshots/${page > 1 ? `?page=${page}` : ''}`;
+  const res = await fetchWithAuth(url);
   if (!res.ok) throw new Error('Failed to fetch snapshots');
   return res.json();
 }
