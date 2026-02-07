@@ -35,12 +35,11 @@ if test -f "/crontabs"; then
 fi
 
 # Start gunicorn with uvicorn worker
-# Using 1 worker because discovery sessions are stored in-memory
-# TODO: Use Redis cache for sessions to enable multiple workers
+# Discovery sessions stored in /tmp/wealth_discovery_sessions.pkl (shared across workers)
 python -m gunicorn \
   ${DJANGO_PROJECT_NAME}.asgi:application \
   --bind 0.0.0.0:8000 \
-  --workers 1 \
+  --workers 4 \
   --worker-class uvicorn_worker.UvicornWorker \
   --chdir ${APP_PATH} \
   --access-logformat "%({x-forwarded-for}i)s %(l)s %(u)s %(t)s \"%(r)s\" %(s)s %(b)s \"%(f)s\" \"%(a)s\"" \

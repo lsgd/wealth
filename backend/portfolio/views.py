@@ -1,33 +1,115 @@
 import logging
+import os
+import pickle
 import uuid
 from datetime import date, timedelta
 from decimal import Decimal
-from threading import Lock
+from fcntl import flock, LOCK_EX, LOCK_UN
 from time import time
 
 logger = logging.getLogger(__name__)
 
-# In-memory store for pending discovery sessions (2FA flows)
-# Key: session_token, Value: {'integration': ..., 'broker_code': ..., 'created_at': ...}
+# File-based store for pending discovery sessions (2FA flows)
+# Uses pickle for serialization, file locking for concurrency
 # Sessions expire after 10 minutes (photoTAN requires scanning + entering code)
-_discovery_sessions: dict = {}
-_discovery_sessions_lock = Lock()
 DISCOVERY_SESSION_TIMEOUT = 600  # 10 minutes
+DISCOVERY_SESSIONS_FILE = '/tmp/wealth_discovery_sessions.pkl'
+
+
+def _load_sessions() -> dict:
+    """Load sessions from file."""
+    if not os.path.exists(DISCOVERY_SESSIONS_FILE):
+        return {}
+    try:
+        with open(DISCOVERY_SESSIONS_FILE, 'rb') as f:
+            return pickle.load(f)
+    except Exception as e:
+        logger.warning(f"Failed to load discovery sessions: {e}")
+        return {}
+
+
+def _save_sessions(sessions: dict):
+    """Save sessions to file with locking."""
+    try:
+        with open(DISCOVERY_SESSIONS_FILE, 'wb') as f:
+            flock(f.fileno(), LOCK_EX)
+            try:
+                pickle.dump(sessions, f)
+            finally:
+                flock(f.fileno(), LOCK_UN)
+    except Exception as e:
+        logger.warning(f"Failed to save discovery sessions: {e}")
+
+
+def _get_session(token: str) -> dict | None:
+    """Get a session by token."""
+    sessions = _load_sessions()
+    return sessions.get(token)
+
+
+def _set_session(token: str, data: dict):
+    """Set a session."""
+    with open(DISCOVERY_SESSIONS_FILE, 'ab+') as f:
+        flock(f.fileno(), LOCK_EX)
+        try:
+            f.seek(0)
+            try:
+                sessions = pickle.load(f) if os.path.getsize(DISCOVERY_SESSIONS_FILE) > 0 else {}
+            except Exception:
+                sessions = {}
+            sessions[token] = data
+            f.seek(0)
+            f.truncate()
+            pickle.dump(sessions, f)
+        finally:
+            flock(f.fileno(), LOCK_UN)
+
+
+def _delete_session(token: str):
+    """Delete a session."""
+    with open(DISCOVERY_SESSIONS_FILE, 'ab+') as f:
+        flock(f.fileno(), LOCK_EX)
+        try:
+            f.seek(0)
+            try:
+                sessions = pickle.load(f) if os.path.getsize(DISCOVERY_SESSIONS_FILE) > 0 else {}
+            except Exception:
+                sessions = {}
+            sessions.pop(token, None)
+            f.seek(0)
+            f.truncate()
+            pickle.dump(sessions, f)
+        finally:
+            flock(f.fileno(), LOCK_UN)
 
 
 def _cleanup_expired_sessions():
     """Remove expired discovery sessions."""
     now = time()
-    with _discovery_sessions_lock:
-        expired = [k for k, v in _discovery_sessions.items()
-                   if now - v.get('created_at', 0) > DISCOVERY_SESSION_TIMEOUT]
-        for k in expired:
-            session = _discovery_sessions.pop(k, None)
-            if session and session.get('integration'):
-                try:
-                    session['integration'].close()
-                except Exception:
-                    pass
+    with open(DISCOVERY_SESSIONS_FILE, 'ab+') as f:
+        flock(f.fileno(), LOCK_EX)
+        try:
+            f.seek(0)
+            try:
+                sessions = pickle.load(f) if os.path.getsize(DISCOVERY_SESSIONS_FILE) > 0 else {}
+            except Exception:
+                sessions = {}
+
+            expired = [k for k, v in sessions.items()
+                       if now - v.get('created_at', 0) > DISCOVERY_SESSION_TIMEOUT]
+            for k in expired:
+                session = sessions.pop(k, None)
+                if session and session.get('integration'):
+                    try:
+                        session['integration'].close()
+                    except Exception:
+                        pass
+
+            f.seek(0)
+            f.truncate()
+            pickle.dump(sessions, f)
+        finally:
+            flock(f.fileno(), LOCK_UN)
 
 from django.utils import timezone
 from rest_framework import generics, status
@@ -827,13 +909,12 @@ class BrokerDiscoverView(APIView):
                 if auth_result.requires_2fa:
                     # Generate session token and store integration for 2FA completion
                     session_token = str(uuid.uuid4())
-                    with _discovery_sessions_lock:
-                        _discovery_sessions[session_token] = {
-                            'integration': integration,
-                            'broker_code': broker_code,
-                            'session_data': auth_result.session_data or {},
-                            'created_at': time(),
-                        }
+                    _set_session(session_token, {
+                        'integration': integration,
+                        'broker_code': broker_code,
+                        'session_data': auth_result.session_data or {},
+                        'created_at': time(),
+                    })
 
                     return Response({
                         'status': 'pending_auth',
@@ -898,9 +979,8 @@ class BrokerDiscoverCompleteAuthView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Get the stored session
-        with _discovery_sessions_lock:
-            session = _discovery_sessions.get(session_token)
+        # Get the stored session from file
+        session = _get_session(session_token)
 
         if not session:
             return Response(
@@ -910,13 +990,13 @@ class BrokerDiscoverCompleteAuthView(APIView):
 
         # Check if session is expired
         if time() - session.get('created_at', 0) > DISCOVERY_SESSION_TIMEOUT:
-            with _discovery_sessions_lock:
-                expired_session = _discovery_sessions.pop(session_token, None)
-                if expired_session and expired_session.get('integration'):
-                    try:
-                        expired_session['integration'].close()
-                    except Exception:
-                        pass
+            integration = session.get('integration')
+            if integration:
+                try:
+                    integration.close()
+                except Exception:
+                    pass
+            _delete_session(session_token)
             return Response(
                 {'error': 'Session expired. Please restart discovery.'},
                 status=status.HTTP_400_BAD_REQUEST
@@ -966,8 +1046,7 @@ class BrokerDiscoverCompleteAuthView(APIView):
                 account_list.append(entry)
 
             # Cleanup session
-            with _discovery_sessions_lock:
-                _discovery_sessions.pop(session_token, None)
+            _delete_session(session_token)
             integration.close()
 
             return Response({
@@ -978,8 +1057,7 @@ class BrokerDiscoverCompleteAuthView(APIView):
         except Exception as e:
             logger.exception("Discovery 2FA completion failed")
             # Cleanup on error
-            with _discovery_sessions_lock:
-                _discovery_sessions.pop(session_token, None)
+            _delete_session(session_token)
             try:
                 integration.close()
             except Exception:
