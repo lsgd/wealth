@@ -23,6 +23,7 @@ async function refreshAccessToken(): Promise<string | null> {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ refresh }),
+    credentials: 'include',
   });
 
   if (!res.ok) {
@@ -50,13 +51,13 @@ export async function fetchWithAuth(
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  let res = await fetch(url, { ...options, headers });
+  let res = await fetch(url, { ...options, headers, credentials: 'include' });
 
   if (res.status === 401 && token) {
     const newToken = await refreshAccessToken();
     if (newToken) {
       headers['Authorization'] = `Bearer ${newToken}`;
-      res = await fetch(url, { ...options, headers });
+      res = await fetch(url, { ...options, headers, credentials: 'include' });
     }
   }
 
@@ -69,6 +70,7 @@ export async function login(username: string, password: string) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, password }),
+    credentials: 'include',
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
@@ -90,6 +92,7 @@ export async function register(fields: {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(fields),
+    credentials: 'include',
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
