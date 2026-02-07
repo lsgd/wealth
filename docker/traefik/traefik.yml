@@ -1,0 +1,33 @@
+entryPoints:
+  web:
+    address: :80
+    http:
+      redirections:
+        entrypoint:
+          to: websecure
+          scheme: https
+  websecure:
+    address: :443
+
+providers:
+  providersThrottleDuration: 2s
+  docker:
+    exposedByDefault: false
+    endpoint: unix:///var/run/docker.sock
+
+api:
+  insecure: true
+  dashboard: true
+
+log:
+  level: INFO
+
+accessLog: {}
+
+certificatesResolvers:
+  default:
+    acme:
+      email: ${ACME_EMAIL:-admin@example.com}
+      storage: /letsencrypt/acme.json
+      httpChallenge:
+        entryPoint: web

@@ -25,7 +25,7 @@ interface Profile {
 const CURRENCIES = ['EUR', 'USD', 'CHF', 'GBP'];
 
 export default function SettingsPage() {
-  const [profile, setProfile] = useState<Profile | null>(null);
+  const [, setProfile] = useState<Profile | null>(null);
   const [user, setUser] = useState<UserData | null>(null);
   const [loading, setLoading] = useState(true);
 

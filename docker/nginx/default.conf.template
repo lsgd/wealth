@@ -1,0 +1,60 @@
+http {
+    upstream handler {
+        server ${PYTHON_ENDPOINT}:8000;
+    }
+
+    server_tokens off;
+    charset utf-8;
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+
+    log_format combined_realip '$http_x_forwarded_for - $remote_user [$time_local] '
+                    '"$request" $status $body_bytes_sent '
+                    '"$http_referer" "$http_user_agent"';
+
+    access_log /dev/stdout combined_realip;
+    error_log /dev/stderr error;
+
+    server {
+        listen 80 default_server;
+        server_name _;
+
+        # max upload size
+        client_max_body_size 250M;
+
+        # Django media
+        location /media  {
+            alias /var/www/public/media;
+        }
+
+        location /static {
+            alias /var/www/public/static;
+        }
+
+        # API requests to Django
+        location /api {
+            proxy_set_header X-Forwarded-Host $host;
+            proxy_set_header X-Forwarded-Port $server_port;
+            proxy_set_header X-Forwarded-Server $host;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+
+            proxy_buffering off;
+
+            proxy_connect_timeout 900;
+            proxy_send_timeout 900;
+            proxy_read_timeout 900;
+            send_timeout 900;
+
+            proxy_pass http://handler;
+        }
+
+        # Admin requests to Django
+        location /admin {
+            proxy_set_header X-Forwarded-Host $host;
+            proxy_set_header X-Forwarded-Port $server_port;
+            proxy_set_header X-Forwarded-Server $host;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_pass http://handler;
+        }
+    }
+}

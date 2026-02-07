@@ -298,6 +298,249 @@ Access the admin interface at `http://localhost:8000/admin/` after creating a su
 - Never commit `.env` files or credentials to version control
 - The encryption key must be kept secure and backed up
 
+---
+
+## Production Deployment (Docker)
+
+This section documents production deployment using Docker Compose with Traefik reverse proxy.
+
+### Architecture
+
+```
+                    ┌─────────────┐
+                    │   Traefik   │
+                    │ (SSL/Auth)  │
+                    └──────┬──────┘
+                           │
+          ┌────────────────┼────────────────┐
+          │                │                │
+    ┌─────▼─────┐    ┌─────▼─────┐    ┌─────▼─────┐
+    │  Frontend │    │   Nginx   │    │           │
+    │  (React)  │    │  (API)    │    │           │
+    └───────────┘    └─────┬─────┘    │  wealth-db│
+                           │          │ (Postgres)│
+                     ┌─────▼─────┐    │           │
+                     │ wealth-py │◄───┤           │
+                     │ (Django)  │    └───────────┘
+                     └───────────┘
+```
+
+### Environment Configuration
+
+Create `.env.wealth` for production. See `.env.wealth.example` for reference:
+
+```env
+# NOTE: WEALTH_HTPASSWD must be in the main .env file (not here)
+# because docker-compose needs it for label substitution.
+# Generate with: htpasswd -nB admin
+# Add to main .env: WEALTH_HTPASSWD=admin:$$2y$$05$$...
+
+# Database (PostgreSQL container)
+POSTGRES_USER=wealth
+POSTGRES_PASSWORD=<generate-secure-password>
+POSTGRES_DB=wealth_base
+
+# Database (Django connection)
+# Note: Password must be duplicated here (no variable interpolation in .env files)
+DATABASE_URL=postgres://wealth:<same-password>@wealth-db:5432/wealth_base
+
+# Django
+DJANGO_SECRET_KEY=<generate-secret-key>
+DJANGO_DEBUG=False
+DJANGO_ALLOWED_HOSTS=wealth.example.com,localhost
+
+# Encryption (for stored credentials)
+CREDENTIAL_ENCRYPTION_KEY=<generate-fernet-key>
+
+# CORS
+CORS_ALLOWED_ORIGINS=https://wealth.example.com
+
+# Django error notifications (format: Name:email,Name2:email2)
+ADMINS=Admin:admin@example.com
+
+# Email (for weekly reports and error notifications)
+EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
+EMAIL_HOST=smtp.example.com
+EMAIL_PORT=587
+# TLS vs SSL: Use only ONE of these, not both
+# EMAIL_USE_TLS=True  → STARTTLS on port 587 (most common)
+# EMAIL_USE_SSL=True  → Implicit SSL on port 465
+EMAIL_USE_TLS=True
+EMAIL_USE_SSL=False
+EMAIL_HOST_USER=noreply@example.com
+EMAIL_HOST_PASSWORD=<email-password>
+DEFAULT_FROM_EMAIL=Wealth Tracker <noreply@example.com>
+ADMIN_EMAIL=admin@example.com
+```
+
+### Generating Secrets
+
+```bash
+# Django Secret Key (random 50 chars)
+python -c "import secrets; print(secrets.token_urlsafe(50))"
+
+# Fernet Encryption Key (for credential storage)
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+
+# Database Password (random 32 chars)
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+
+# HTTP Basic Auth Password (bcrypt hash for Traefik)
+htpasswd -nB admin
+# Output: admin:$2y$05$... (add to main .env as WEALTH_HTPASSWD)
+```
+
+### Docker Compose Services
+
+Add these services to your `docker-compose.yml`:
+
+```yaml
+wealth-nginx:
+  image: nginx
+  container_name: wealth-nginx
+  restart: always
+  working_dir: /etc/nginx
+  environment:
+    PYTHON_ENDPOINT: 'wealth-py'
+  labels:
+    traefik.enable: true
+    traefik.http.routers.wealth.rule: Host(`api.wealth.example.com`)
+    traefik.http.routers.wealth.entrypoints: 'websecure'
+    traefik.http.routers.wealth.tls: true
+    traefik.http.routers.wealth.tls.certresolver: 'default'
+    traefik.http.routers.wealth.middlewares: 'wealth-auth'
+    traefik.http.middlewares.wealth-auth.basicauth.users: '${WEALTH_HTPASSWD}'
+  volumes:
+    - './_nginx/nginx.conf:/etc/nginx/nginx.conf:ro'
+    - './_nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro'
+    - '/opt/data/wealth/public/media:/var/www/public/media:ro'
+    - '/opt/data/wealth/public/static:/var/www/public/static:ro'
+  depends_on:
+    - wealth-py
+  networks:
+    - public
+
+wealth-db:
+  image: postgres:18
+  container_name: wealth-db
+  restart: always
+  env_file: .env.wealth
+  volumes:
+    # IMPORTANT: PostgreSQL 18 requires mounting /var/lib/postgresql (not /data subdirectory)
+    - '/opt/data/wealth/databases/postgresql:/var/lib/postgresql:rw'
+  networks:
+    - public
+
+wealth-py:
+  build: ./_gunicorn
+  container_name: wealth-py
+  restart: always
+  working_dir: /var/www/app
+  env_file: .env.wealth
+  environment:
+    DJANGO_PROJECT_NAME: 'wealth'
+  volumes:
+    # Git repo is at /opt/data/wealth/repo/ (monorepo with backend/ and frontend/)
+    - '/opt/data/wealth/repo/backend:/var/www/app:rw'
+    - '/opt/data/wealth/public/media:/var/www/public/media:rw'
+    - '/opt/data/wealth/public/static:/var/www/public/static:rw'
+    - '/opt/data/wealth/repo/docker/crontabs:/crontabs:ro'
+  depends_on:
+    - wealth-db
+  networks:
+    - public
+
+wealth-frontend:
+  build: ./_wealth-frontend
+  container_name: wealth-frontend
+  restart: always
+  labels:
+    traefik.enable: true
+    traefik.http.routers.wealth-frontend.rule: Host(`wealth.example.com`)
+    traefik.http.routers.wealth-frontend.entrypoints: 'websecure'
+    traefik.http.routers.wealth-frontend.tls: true
+    traefik.http.routers.wealth-frontend.tls.certresolver: 'default'
+    traefik.http.routers.wealth-frontend.middlewares: 'wealth-auth'
+    traefik.http.services.wealth-frontend.loadbalancer.server.port: 80
+  networks:
+    - public
+```
+
+### Scheduled Tasks (Cron)
+
+Set up cron jobs for automated tasks:
+
+```crontab
+# Fetch daily exchange rates (6 AM)
+0 6 * * * cd /var/www/app && python manage.py fetch_exchange_rates
+
+# Sync all enabled accounts daily (7 PM)
+0 19 * * * cd /var/www/app && python manage.py sync_accounts
+
+# Send weekly wealth reports (Mondays at 8 AM)
+0 8 * * 1 cd /var/www/app && python manage.py send_wealth_report
+```
+
+### Management Commands
+
+```bash
+# Fetch latest exchange rates
+python manage.py fetch_exchange_rates
+
+# Fetch rates for a specific date
+python manage.py fetch_exchange_rates --date 2024-01-15
+
+# Backfill historical rates
+python manage.py fetch_exchange_rates --backfill --start 2024-01-01 --end 2024-01-31
+
+# Sync all enabled accounts (for accounts that support auto-sync)
+python manage.py sync_accounts
+
+# Send weekly email reports
+python manage.py send_wealth_report
+
+# Send to specific users only
+python manage.py send_wealth_report --users user1 user2
+```
+
+### Initial Deployment Checklist
+
+1. **Create environment file**: Copy `.env.wealth.example` to `.env.wealth` and fill in all values
+2. **Add htpasswd to main .env**: Generate with `htpasswd -nB admin` and add as `WEALTH_HTPASSWD`
+3. **Create data directories**:
+   ```bash
+   mkdir -p /opt/data/wealth/{repo,databases/postgresql,public/media,public/static}
+   ```
+4. **Clone repository** to `/opt/data/wealth/repo`
+5. **Build and start containers**: `docker-compose up -d wealth-db wealth-py wealth-nginx wealth-frontend`
+6. **Run migrations**: `docker exec wealth-py python manage.py migrate`
+7. **Collect static files**: `docker exec wealth-py python manage.py collectstatic --noinput`
+8. **Load broker fixtures**: `docker exec wealth-py python manage.py loaddata initial_brokers`
+9. **Create admin user**: `docker exec -it wealth-py python manage.py createsuperuser`
+10. **Cron jobs** are in the repo at `docker/crontabs` (mounted automatically)
+
+### Troubleshooting
+
+**Database connection issues:**
+- Verify `DATABASE_URL` in `.env.wealth` matches `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`
+- Check container networking: `docker exec wealth-py ping wealth-db`
+
+**Static files not loading:**
+- Run `collectstatic`: `docker exec wealth-py python manage.py collectstatic --noinput`
+- Check nginx volume mounts point to correct directories
+
+**Email not working:**
+- Test with Django shell: `docker exec -it wealth-py python manage.py shell`
+  ```python
+  from django.core.mail import send_mail
+  send_mail('Test', 'Body', None, ['test@example.com'])
+  ```
+- Verify EMAIL_USE_TLS vs EMAIL_USE_SSL matches your SMTP port
+
+**Exchange rates not updating:**
+- Manually run: `docker exec wealth-py python manage.py fetch_exchange_rates`
+- Check logs: `docker logs wealth-py`
+
 ## License
 
 Private - All rights reserved

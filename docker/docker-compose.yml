@@ -1,0 +1,91 @@
+networks:
+  wealth:
+    driver: bridge
+
+services:
+  traefik:
+    image: traefik:3
+    container_name: wealth-traefik
+    restart: always
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - './traefik/traefik.yml:/etc/traefik/traefik.yml:ro'
+      - '/opt/data/wealth/traefik/letsencrypt:/letsencrypt:rw'
+      - '/var/run/docker.sock:/var/run/docker.sock:ro'
+    labels:
+      traefik.enable: true
+      traefik.http.middlewares.wealth-auth.basicauth.users: '${HTPASSWD}'
+    networks:
+      - wealth
+
+  nginx:
+    image: nginx
+    container_name: wealth-nginx
+    restart: always
+    working_dir: /etc/nginx
+    environment:
+      PYTHON_ENDPOINT: 'wealth-py'
+    labels:
+      traefik.enable: true
+      traefik.http.routers.wealth.rule: Host(`${DOMAIN:-wealth.localhost}`)
+      traefik.http.routers.wealth.entrypoints: 'websecure'
+      traefik.http.routers.wealth.tls: true
+      traefik.http.routers.wealth.tls.certresolver: 'default'
+      traefik.http.routers.wealth.middlewares: 'wealth-auth'
+    volumes:
+      - './nginx/nginx.conf:/etc/nginx/nginx.conf:ro'
+      - './nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro'
+      - '/opt/data/wealth/public/media:/var/www/public/media:ro'
+      - '/opt/data/wealth/public/static:/var/www/public/static:ro'
+    depends_on:
+      - wealth-py
+    networks:
+      - wealth
+
+  wealth-db:
+    image: postgres:18
+    container_name: wealth-db
+    restart: always
+    env_file: .env
+    volumes:
+      # IMPORTANT: PostgreSQL 18 requires mounting /var/lib/postgresql (not /data subdirectory)
+      - '/opt/data/wealth/databases/postgresql:/var/lib/postgresql:rw'
+    networks:
+      - wealth
+
+  wealth-py:
+    build: ./backend
+    container_name: wealth-py
+    restart: always
+    working_dir: /var/www/app
+    env_file: .env
+    environment:
+      DJANGO_PROJECT_NAME: 'wealth'
+    volumes:
+      # Git repo is at /opt/data/wealth/repo/ (monorepo with backend/ and frontend/)
+      - '/opt/data/wealth/repo/backend:/var/www/app:rw'
+      - '/opt/data/wealth/public/media:/var/www/public/media:rw'
+      - '/opt/data/wealth/public/static:/var/www/public/static:rw'
+      - '/opt/data/wealth/repo/docker/crontabs:/crontabs:ro'
+    depends_on:
+      - wealth-db
+    networks:
+      - wealth
+
+  wealth-frontend:
+    build: ./frontend
+    container_name: wealth-frontend
+    restart: always
+    labels:
+      traefik.enable: true
+      traefik.http.routers.wealth-frontend.rule: Host(`${DOMAIN:-wealth.localhost}`) && PathPrefix(`/`)
+      traefik.http.routers.wealth-frontend.entrypoints: 'websecure'
+      traefik.http.routers.wealth-frontend.tls: true
+      traefik.http.routers.wealth-frontend.tls.certresolver: 'default'
+      traefik.http.routers.wealth-frontend.priority: 1
+      traefik.http.routers.wealth-frontend.middlewares: 'wealth-auth'
+      traefik.http.services.wealth-frontend.loadbalancer.server.port: 80
+    networks:
+      - wealth
