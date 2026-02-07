@@ -48,7 +48,8 @@ export async function fetchWithAuth(
   };
 
   if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
+    // Use X-Auth-Token to avoid conflict with HTTP Basic Auth's Authorization header
+    headers['X-Auth-Token'] = `Bearer ${token}`;
   }
 
   let res = await fetch(url, { ...options, headers, credentials: 'include' });
@@ -56,7 +57,7 @@ export async function fetchWithAuth(
   if (res.status === 401 && token) {
     const newToken = await refreshAccessToken();
     if (newToken) {
-      headers['Authorization'] = `Bearer ${newToken}`;
+      headers['X-Auth-Token'] = `Bearer ${newToken}`;
       res = await fetch(url, { ...options, headers, credentials: 'include' });
     }
   }

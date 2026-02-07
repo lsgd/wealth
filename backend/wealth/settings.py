@@ -139,6 +139,8 @@ SIMPLE_JWT = {
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,
     'AUTH_HEADER_TYPES': ('Bearer',),
+    # Use custom header to avoid conflict with HTTP Basic Auth
+    'AUTH_HEADER_NAME': 'HTTP_X_AUTH_TOKEN',
 }
 
 # CORS Settings
