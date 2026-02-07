@@ -40,9 +40,12 @@ def _translate_fints_error(error: Exception) -> str:
     """Translate FinTS error codes to user-friendly messages."""
     error_str = str(error).strip()
 
+    # Strip quotes that may wrap the error code (e.g., "'900'" -> "900")
+    error_str_clean = error_str.strip("'\"")
+
     # Check if it's a pure error code (just digits)
-    if error_str.isdigit():
-        return FINTS_ERROR_MESSAGES.get(error_str, f'Bank error ({error_str}). Please try again.')
+    if error_str_clean.isdigit():
+        return FINTS_ERROR_MESSAGES.get(error_str_clean, f'Bank error ({error_str_clean}). Please try again.')
 
     # Check if error contains a known code
     for code, message in FINTS_ERROR_MESSAGES.items():
