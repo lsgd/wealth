@@ -18,6 +18,42 @@ from .base import (
 
 logger = logging.getLogger(__name__)
 
+# FinTS/HBCI error code translations
+FINTS_ERROR_MESSAGES = {
+    '900': 'Invalid TAN code. Please check and try again.',
+    '9000': 'Invalid TAN code. Please check and try again.',
+    '9010': 'TAN has expired. Please restart the authentication process.',
+    '9050': 'TAN mechanism is locked. Please contact your bank.',
+    '9210': 'Invalid credentials. Please check your username and PIN.',
+    '9800': 'Dialog initialization failed. Please try again.',
+    '9900': 'Authentication failed. Please check your credentials.',
+    '9910': 'Session expired. Please restart the authentication process.',
+    '9920': 'Too many failed attempts. Please try again later.',
+    '9930': 'Account locked. Please contact your bank.',
+    '9931': 'PIN locked. Please contact your bank.',
+    '9941': 'TAN required but not provided.',
+    '9942': 'Invalid TAN format.',
+}
+
+
+def _translate_fints_error(error: Exception) -> str:
+    """Translate FinTS error codes to user-friendly messages."""
+    error_str = str(error).strip()
+
+    # Check if it's a pure error code (just digits)
+    if error_str.isdigit():
+        return FINTS_ERROR_MESSAGES.get(error_str, f'Bank error ({error_str}). Please try again.')
+
+    # Check if error contains a known code
+    for code, message in FINTS_ERROR_MESSAGES.items():
+        if code in error_str:
+            return message
+
+    # Return original error if no translation found, but clean it up
+    if len(error_str) < 100:
+        return f'Bank error: {error_str}'
+    return 'An error occurred during authentication. Please try again.'
+
 
 class FinTSIntegration(BrokerIntegrationBase):
     """Integration for German banks using FinTS protocol."""
@@ -202,7 +238,7 @@ class FinTSIntegration(BrokerIntegrationBase):
             logger.exception("FinTS authentication failed")
             return AuthResult(
                 success=False,
-                error_message=str(e)
+                error_message=_translate_fints_error(e)
             )
 
     def complete_2fa(
@@ -250,7 +286,7 @@ class FinTSIntegration(BrokerIntegrationBase):
             logger.exception("2FA completion failed")
             return AuthResult(
                 success=False,
-                error_message=str(e)
+                error_message=_translate_fints_error(e)
             )
 
     def get_accounts(self) -> List[AccountInfo]:
