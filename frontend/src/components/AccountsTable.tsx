@@ -479,27 +479,25 @@ export default function AccountsTable({ accounts, baseCurrency, onRefresh }: Pro
                     </td>
                     <td>
                       <div className="action-buttons">
+                        <button
+                          className="btn btn-sm btn-ghost"
+                          onClick={() => setSnapshotAccount(a)}
+                          title="Add Snapshot"
+                        >
+                          <Plus size={14} />
+                        </button>
                         {!a.is_manual && (
-                          <>
-                            <button
-                              className="btn btn-sm btn-ghost"
-                              onClick={() => handleSync(a.id)}
-                              disabled={syncing === a.id}
-                              title="Sync"
-                            >
-                              <RefreshCw
-                                size={14}
-                                className={syncing === a.id ? 'spin' : ''}
-                              />
-                            </button>
-                            <button
-                              className="btn btn-sm btn-ghost"
-                              onClick={() => openCredentialsModal(a)}
-                              title="Edit Credentials"
-                            >
-                              <Settings size={14} />
-                            </button>
-                          </>
+                          <button
+                            className="btn btn-sm btn-ghost"
+                            onClick={() => handleSync(a.id)}
+                            disabled={syncing === a.id}
+                            title="Sync"
+                          >
+                            <RefreshCw
+                              size={14}
+                              className={syncing === a.id ? 'spin' : ''}
+                            />
+                          </button>
                         )}
                         <button
                           className="btn btn-sm btn-ghost"
@@ -510,17 +508,10 @@ export default function AccountsTable({ accounts, baseCurrency, onRefresh }: Pro
                         </button>
                         <button
                           className="btn btn-sm btn-ghost"
-                          onClick={() => setSnapshotAccount(a)}
-                          title="Add Snapshot"
+                          onClick={() => openCredentialsModal(a)}
+                          title="Account Settings"
                         >
-                          <Plus size={14} />
-                        </button>
-                        <button
-                          className="btn btn-sm btn-ghost btn-danger"
-                          onClick={() => setDeleteConfirm(a)}
-                          title="Delete Account"
-                        >
-                          <Trash2 size={14} />
+                          <Settings size={14} />
                         </button>
                       </div>
                     </td>
@@ -744,7 +735,7 @@ export default function AccountsTable({ accounts, baseCurrency, onRefresh }: Pro
         </div>
       )}
 
-      {/* Credentials Modal */}
+      {/* Account Settings Modal */}
       {credentialsAccount && (
         <div className="modal-overlay" onClick={() => { setCredentialsAccount(null); setCredentialsRetrySync(false); setCredentialsError(''); }}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
@@ -758,7 +749,7 @@ export default function AccountsTable({ accounts, baseCurrency, onRefresh }: Pro
                 ) : (
                   <>
                     <Settings size={18} style={{ marginRight: 8 }} />
-                    Update Credentials
+                    Account Settings
                   </>
                 )}
               </h3>
@@ -777,11 +768,11 @@ export default function AccountsTable({ accounts, baseCurrency, onRefresh }: Pro
               {credentialsRetrySync ? (
                 <>Update credentials for <strong>{credentialsAccount.name}</strong> and retry sync.</>
               ) : (
-                <>Update credentials for <strong>{credentialsAccount.name}</strong></>
+                <>Settings for <strong>{credentialsAccount.name}</strong></>
               )}
             </p>
 
-            {credentialSchema?.properties ? (
+            {!credentialsAccount.is_manual && credentialSchema?.properties ? (
               <form onSubmit={(e) => { e.preventDefault(); handleSaveCredentials(credentialsRetrySync); }}>
                 {Object.entries(credentialSchema.properties).map(([key, field]: [string, any]) => (
                   <div className="form-group" key={key}>
@@ -800,6 +791,20 @@ export default function AccountsTable({ accounts, baseCurrency, onRefresh }: Pro
                 ))}
 
                 <div className="form-actions">
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-danger"
+                    onClick={() => {
+                      setCredentialsAccount(null);
+                      setCredentialsRetrySync(false);
+                      setCredentialsError('');
+                      setDeleteConfirm(credentialsAccount);
+                    }}
+                    style={{ marginRight: 'auto' }}
+                  >
+                    <Trash2 size={14} style={{ marginRight: 6 }} />
+                    Delete
+                  </button>
                   <button
                     type="button"
                     className="btn btn-ghost"
@@ -846,6 +851,30 @@ export default function AccountsTable({ accounts, baseCurrency, onRefresh }: Pro
                   )}
                 </div>
               </form>
+            ) : credentialsAccount.is_manual ? (
+              <div className="form-actions">
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-danger"
+                  onClick={() => {
+                    setCredentialsAccount(null);
+                    setCredentialsRetrySync(false);
+                    setCredentialsError('');
+                    setDeleteConfirm(credentialsAccount);
+                  }}
+                  style={{ marginRight: 'auto' }}
+                >
+                  <Trash2 size={14} style={{ marginRight: 6 }} />
+                  Delete Account
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={() => { setCredentialsAccount(null); setCredentialsRetrySync(false); setCredentialsError(''); }}
+                >
+                  Close
+                </button>
+              </div>
             ) : (
               <p className="text-muted">Loading credential fields...</p>
             )}
