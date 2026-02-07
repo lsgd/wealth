@@ -4,34 +4,46 @@ from datetime import date, timedelta
 from decimal import Decimal
 from time import time
 
-from django.core.cache import cache
-
 logger = logging.getLogger(__name__)
 
-# Discovery sessions stored in Django's file-based cache
+# Discovery sessions stored in memory (requires single gunicorn worker for FinTS)
+# FinTS client objects contain TCP connections that cannot be pickled/serialized
 # Sessions expire after 10 minutes (photoTAN requires scanning + entering code)
 DISCOVERY_SESSION_TIMEOUT = 600  # 10 minutes
-DISCOVERY_SESSION_PREFIX = 'discovery_session_'
+_discovery_sessions: dict[str, dict] = {}
 
 
 def _get_session(token: str) -> dict | None:
-    """Get a session by token from Django cache."""
-    return cache.get(f'{DISCOVERY_SESSION_PREFIX}{token}')
+    """Get a session by token from in-memory storage."""
+    return _discovery_sessions.get(token)
 
 
 def _set_session(token: str, data: dict):
-    """Set a session in Django cache."""
-    cache.set(f'{DISCOVERY_SESSION_PREFIX}{token}', data, timeout=DISCOVERY_SESSION_TIMEOUT)
+    """Set a session in in-memory storage."""
+    _discovery_sessions[token] = data
 
 
 def _delete_session(token: str):
-    """Delete a session from Django cache."""
-    cache.delete(f'{DISCOVERY_SESSION_PREFIX}{token}')
+    """Delete a session from in-memory storage."""
+    _discovery_sessions.pop(token, None)
 
 
 def _cleanup_expired_sessions():
-    """Django cache handles expiration automatically - this is a no-op."""
-    pass
+    """Remove expired sessions from memory."""
+    now = time()
+    expired = [
+        token for token, data in _discovery_sessions.items()
+        if now - data.get('created_at', 0) > DISCOVERY_SESSION_TIMEOUT
+    ]
+    for token in expired:
+        session = _discovery_sessions.pop(token, None)
+        if session:
+            integration = session.get('integration')
+            if integration:
+                try:
+                    integration.close()
+                except Exception:
+                    pass
 
 
 from django.utils import timezone
