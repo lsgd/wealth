@@ -104,6 +104,7 @@ export default function WealthChart({ history, baseCurrency, onRangeChange }: Pr
               dataKey="date"
               tick={{ fill: 'var(--color-text-muted)', fontSize: 12 }}
               tickFormatter={formatDate}
+              interval={Math.max(0, Math.floor(history.length / 10) - 1)}
             />
             <YAxis
               tick={{ fill: 'var(--color-text-muted)', fontSize: 12 }}
