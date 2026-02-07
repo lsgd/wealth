@@ -9,10 +9,10 @@ logger = logging.getLogger(__name__)
 
 # In-memory store for pending discovery sessions (2FA flows)
 # Key: session_token, Value: {'integration': ..., 'broker_code': ..., 'created_at': ...}
-# Sessions expire after 5 minutes
+# Sessions expire after 10 minutes (photoTAN requires scanning + entering code)
 _discovery_sessions: dict = {}
 _discovery_sessions_lock = Lock()
-DISCOVERY_SESSION_TIMEOUT = 300  # 5 minutes
+DISCOVERY_SESSION_TIMEOUT = 600  # 10 minutes
 
 
 def _cleanup_expired_sessions():
