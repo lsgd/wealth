@@ -470,6 +470,19 @@ class AccountSnapshotListCreateView(generics.ListCreateAPIView):
                 user_profile.base_currency,
                 snapshot.snapshot_date
             )
+            # Fetch exchange rate if missing
+            if not rate:
+                from exchange_rates.services import ExchangeRateService
+                try:
+                    ExchangeRateService.fetch_rates_for_date(snapshot.snapshot_date)
+                    # Retry getting rate after fetch
+                    rate = ExchangeRate.get_rate(
+                        snapshot.currency,
+                        user_profile.base_currency,
+                        snapshot.snapshot_date
+                    )
+                except Exception:
+                    pass  # Will leave base_currency fields empty if fetch fails
             if rate:
                 snapshot.balance_base_currency = snapshot.balance * rate
                 snapshot.base_currency = user_profile.base_currency
@@ -499,6 +512,19 @@ class AccountSnapshotDetailView(generics.RetrieveUpdateDestroyAPIView):
                 user_profile.base_currency,
                 snapshot.snapshot_date
             )
+            # Fetch exchange rate if missing
+            if not rate:
+                from exchange_rates.services import ExchangeRateService
+                try:
+                    ExchangeRateService.fetch_rates_for_date(snapshot.snapshot_date)
+                    # Retry getting rate after fetch
+                    rate = ExchangeRate.get_rate(
+                        snapshot.currency,
+                        user_profile.base_currency,
+                        snapshot.snapshot_date
+                    )
+                except Exception:
+                    pass
             if rate:
                 snapshot.balance_base_currency = snapshot.balance * rate
                 snapshot.base_currency = user_profile.base_currency
