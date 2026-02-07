@@ -171,3 +171,11 @@ _admins_str = os.getenv('ADMINS', '')
 ADMINS = [
     tuple(admin.split(':')) for admin in _admins_str.split(',') if ':' in admin
 ]
+
+# Historical Data Backfill Settings
+# Maximum lookback window for finding gaps (days)
+HISTORICAL_BACKFILL_MAX_LOOKBACK_DAYS = int(os.getenv('HISTORICAL_BACKFILL_MAX_LOOKBACK_DAYS', '365'))
+# Buffer days to add when fetching historical data
+HISTORICAL_BACKFILL_BUFFER_DAYS = int(os.getenv('HISTORICAL_BACKFILL_BUFFER_DAYS', '5'))
+# Skip backfill if we have a snapshot within this many days
+HISTORICAL_BACKFILL_SKIP_IF_RECENT_DAYS = int(os.getenv('HISTORICAL_BACKFILL_SKIP_IF_RECENT_DAYS', '2'))

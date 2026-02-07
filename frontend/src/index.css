@@ -525,6 +525,10 @@ a:hover {
   padding: 24px;
   width: 100%;
   max-width: 420px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .modal-header {
@@ -559,6 +563,13 @@ a:hover {
   max-width: 700px;
 }
 
+/* Modal content scrolling */
+.modal .table-wrapper {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
 /* Snapshots modal */
 .snapshots-actions {
   margin-bottom: 16px;
@@ -590,6 +601,12 @@ a:hover {
 }
 .snapshot-input[type="date"] {
   width: 150px;
+}
+
+/* Fix calendar picker icon visibility on dark backgrounds */
+input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.8);
+  cursor: pointer;
 }
 
 .snapshot-select {

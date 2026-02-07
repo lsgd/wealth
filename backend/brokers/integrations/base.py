@@ -122,6 +122,14 @@ class BrokerIntegrationBase(ABC):
         """
         return False
 
+    def historical_data_requires_extra_request(self) -> bool:
+        """
+        Returns True if fetching historical data requires an additional API call.
+        If False, historical data comes with the main sync (e.g., IBKR Flex report).
+        Override in subclasses. Default is True (extra request needed).
+        """
+        return True
+
     def close(self):
         """Clean up any resources (sessions, connections)."""
         if self._session:

@@ -465,6 +465,7 @@ class VIACIntegration(BrokerIntegrationBase):
     ) -> List[BalanceInfo]:
         """
         Fetch historical balances from VIAC performance history.
+        Limited to 1 API request to minimize load.
         """
         from datetime import datetime
 
@@ -474,33 +475,18 @@ class VIACIntegration(BrokerIntegrationBase):
                 return []
 
         try:
-            headers = {
-                'Accept': 'application/json',
-                'Referer': f"{self.BASE_URL}/",
-            }
-
-            # Try performance/chart endpoint
             response = self._session.get(
                 f"{self.BASE_URL}/rest/web/portfolio/{account_identifier}/performance/history",
                 params={
                     'from': start_date.isoformat(),
                     'to': end_date.isoformat(),
                 },
-                headers=headers,
+                headers={
+                    'Accept': 'application/json',
+                    'Referer': f"{self.BASE_URL}/",
+                },
                 timeout=30
             )
-
-            if response.status_code != 200:
-                # Try alternative endpoint
-                response = self._session.get(
-                    f"{self.BASE_URL}/rest/web/wealth/history",
-                    params={
-                        'startDate': start_date.isoformat(),
-                        'endDate': end_date.isoformat(),
-                    },
-                    headers=headers,
-                    timeout=30
-                )
 
             if response.status_code != 200:
                 logger.debug(f"VIAC historical data not available: {response.status_code}")
@@ -509,7 +495,7 @@ class VIACIntegration(BrokerIntegrationBase):
             data = response.json()
             historical = []
 
-            # Parse response
+            # Parse response - supports list or dict with history/data key
             entries = data if isinstance(data, list) else data.get('history', data.get('data', []))
             for entry in entries:
                 entry_date = entry.get('date') or entry.get('timestamp')
@@ -528,7 +514,8 @@ class VIACIntegration(BrokerIntegrationBase):
                     except (ValueError, TypeError):
                         continue
 
-            logger.info(f"VIAC: Found {len(historical)} historical entries")
+            if historical:
+                logger.info(f"VIAC: Found {len(historical)} historical entries")
             return historical
 
         except Exception as e:

@@ -223,28 +223,59 @@ class AccountSyncView(APIView):
         """
         Backfill historical snapshots from broker if available.
         Returns the number of snapshots created.
+
+        Strategy:
+        - Look at past HISTORICAL_BACKFILL_MAX_LOOKBACK_DAYS (365) days
+        - Find oldest missing date (gap) in that window
+        - Request from that date + HISTORICAL_BACKFILL_BUFFER_DAYS (5) buffer
+        - Max request is 365 + 5 = 370 days
+        - Skip if already have good recent coverage
         """
         import logging
+        from django.conf import settings as django_settings
         logger = logging.getLogger(__name__)
 
         try:
-            # Find the earliest existing snapshot
-            earliest_snapshot = AccountSnapshot.objects.filter(
-                account=account
-            ).order_by('snapshot_date').first()
+            # Get configurable settings
+            max_lookback = getattr(django_settings, 'HISTORICAL_BACKFILL_MAX_LOOKBACK_DAYS', 365)
+            buffer_days = getattr(django_settings, 'HISTORICAL_BACKFILL_BUFFER_DAYS', 5)
+            skip_if_recent_days = getattr(django_settings, 'HISTORICAL_BACKFILL_SKIP_IF_RECENT_DAYS', 2)
 
-            # Determine backfill range (up to 1 year back)
+            # Check existing snapshot coverage
+            existing_dates = set(
+                AccountSnapshot.objects.filter(account=account)
+                .values_list('snapshot_date', flat=True)
+            )
+
             end_date = date.today()
-            if earliest_snapshot:
-                # Only backfill before the earliest snapshot
-                end_date = earliest_snapshot.snapshot_date - timedelta(days=1)
 
-            start_date = end_date - timedelta(days=365)
+            # For integrations requiring extra requests, find oldest gap to minimize API load
+            if integration.historical_data_requires_extra_request():
+                # Find oldest missing date in the lookback window
+                # Skip the most recent N days (gaps there are acceptable/expected)
+                # Only look from day (skip_if_recent_days + 1) to day max_lookback
+                oldest_gap = None
+                for days_ago in range(max_lookback, skip_if_recent_days, -1):
+                    check_date = end_date - timedelta(days=days_ago)
+                    if check_date not in existing_dates:
+                        oldest_gap = check_date
+                        break
 
-            if start_date >= end_date:
-                return 0  # Nothing to backfill
+                if oldest_gap is None:
+                    logger.debug(f"No gaps found between day {skip_if_recent_days + 1} and {max_lookback} for {account.name}")
+                    return 0
 
-            logger.info(f"Attempting to backfill {account.name} from {start_date} to {end_date}")
+                # Start from oldest gap + buffer (max 365 + 5 = 370 days)
+                start_date = oldest_gap - timedelta(days=buffer_days)
+                # Ensure we don't exceed max lookback + buffer
+                max_start = end_date - timedelta(days=max_lookback + buffer_days)
+                if start_date < max_start:
+                    start_date = max_start
+            else:
+                # No extra request - import all available (use wide range, integration ignores it)
+                start_date = end_date - timedelta(days=3650)  # 10 years
+
+            logger.info(f"Backfilling {account.name} historical data from {start_date} to {end_date}")
 
             # Get historical balances from integration
             historical = integration.get_historical_balances(
@@ -257,12 +288,7 @@ class AccountSyncView(APIView):
                 logger.info(f"No historical data available for {account.name}")
                 return 0
 
-            # Get existing snapshot dates to avoid duplicates
-            existing_dates = set(
-                AccountSnapshot.objects.filter(account=account)
-                .values_list('snapshot_date', flat=True)
-            )
-
+            # existing_dates already fetched above for coverage check
             created_count = 0
             for bal_info in historical:
                 if bal_info.balance_date in existing_dates:

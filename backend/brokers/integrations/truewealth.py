@@ -544,6 +544,7 @@ class TrueWealthIntegration(BrokerIntegrationBase):
     ) -> List[BalanceInfo]:
         """
         Fetch historical balances from TrueWealth performance history.
+        Limited to 1 API request to minimize load.
         """
         from datetime import datetime
 
@@ -553,7 +554,6 @@ class TrueWealthIntegration(BrokerIntegrationBase):
                 return []
 
         try:
-            # Try performance history endpoint
             response = self._session.get(
                 f"{self.BASE_URL}/api/portfolios/{account_identifier}/performance/history",
                 params={
@@ -568,28 +568,13 @@ class TrueWealthIntegration(BrokerIntegrationBase):
             )
 
             if response.status_code != 200:
-                # Try alternative endpoint
-                response = self._session.get(
-                    f"{self.BASE_URL}/api/portfolios/{account_identifier}/chart",
-                    params={
-                        'startDate': start_date.isoformat(),
-                        'endDate': end_date.isoformat(),
-                    },
-                    headers={
-                        'Referer': f"{self.BASE_URL}/app/overview",
-                        'X-XSRF-Token': self._xsrf_token or '',
-                    },
-                    timeout=30
-                )
-
-            if response.status_code != 200:
                 logger.debug(f"TrueWealth historical data not available: {response.status_code}")
                 return []
 
             data = response.json()
             historical = []
 
-            # Parse response - common formats: [{date, value}, ...] or {dates: [], values: []}
+            # Parse response - supports list [{date, value}, ...] or dict {dates: [], values: []}
             if isinstance(data, list):
                 for entry in data:
                     entry_date = entry.get('date') or entry.get('timestamp')
@@ -624,7 +609,8 @@ class TrueWealthIntegration(BrokerIntegrationBase):
                     except (ValueError, TypeError):
                         continue
 
-            logger.info(f"TrueWealth: Found {len(historical)} historical entries")
+            if historical:
+                logger.info(f"TrueWealth: Found {len(historical)} historical entries")
             return historical
 
         except Exception as e:

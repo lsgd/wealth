@@ -1117,6 +1117,21 @@ class MorganStanleyIntegration(BrokerIntegrationBase):
             asset_class='equity'
         )
 
+    def supports_historical_data(self) -> bool:
+        """
+        Morgan Stanley does NOT support historical portfolio value snapshots.
+
+        Their GraphQL API is event/transaction-based (vesting, releases, exercises)
+        rather than providing daily portfolio value history. Available queries:
+        - portfolio: current state only
+        - events: vesting events (past, in-progress, upcoming)
+        - transactions: transaction history with pagination
+
+        None of these provide daily portfolio value snapshots needed for
+        historical wealth tracking.
+        """
+        return False
+
     def close(self):
         """Close the session."""
         if self._session:

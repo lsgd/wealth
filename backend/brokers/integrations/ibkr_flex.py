@@ -252,6 +252,14 @@ class IBKRFlexIntegration(BrokerIntegrationBase):
         sections = [child.tag for child in statement]
         logger.info(f"IBKR Flex report sections: {sections}")
 
+        # Log ALL historical data sections for analysis
+        for section_name in ['ChangeInNAV', 'MTMPerformanceSummaryInBase', 'NAVChange', 'EquitySummaryByReportDateInBase', 'CashReport', 'ChangeInDividendAccruals']:
+            entries = statement.findall(f'.//{section_name}')
+            if entries:
+                logger.warning(f"IBKR Historical section '{section_name}': {len(entries)} entries")
+                for i, entry in enumerate(entries[:5]):  # Log first 5 entries
+                    logger.warning(f"  {section_name}[{i}]: {dict(entry.attrib)}")
+
         # Get account info
         account_info = statement.find('.//AccountInformation')
         if account_info is not None:
@@ -496,18 +504,22 @@ class IBKRFlexIntegration(BrokerIntegrationBase):
         """IBKR Flex supports historical data via Flex Queries."""
         return True
 
+    def historical_data_requires_extra_request(self) -> bool:
+        """IBKR Flex includes historical data in the same report - no extra request."""
+        return False
+
     def get_historical_balances(
         self,
         account_identifier: str,
-        start_date: date,
-        end_date: date
+        _start_date: date,
+        _end_date: date
     ) -> List[BalanceInfo]:
         """
         Fetch historical balances from the Flex report.
 
-        IBKR Flex reports can include ChangeInNAV or MTMPerformanceSummary
-        sections with daily NAV values if the query is configured to
-        include a date range.
+        IBKR Flex reports include daily NAV values - we import ALL available
+        data since no additional API request is needed (data comes with sync).
+        Date params are ignored (prefixed with _) - we import everything.
         """
         if not self._last_report:
             self._last_report = self._fetch_report()
@@ -522,58 +534,75 @@ class IBKRFlexIntegration(BrokerIntegrationBase):
             root = ET.fromstring(content)
             currency = self._last_report.get('currency', 'USD')
 
-            # Look for ChangeInNAV entries with dates
-            for nav_entry in root.findall('.//ChangeInNAV'):
-                report_date_str = nav_entry.get('reportDate') or nav_entry.get('toDate')
-                ending_value = nav_entry.get('endingValue') or nav_entry.get('ending')
+            # Best source: EquitySummaryByReportDateInBase - has daily totals
+            # Import ALL available data (no date filtering - it's already fetched)
+            for equity_entry in root.findall('.//EquitySummaryByReportDateInBase'):
+                report_date_str = equity_entry.get('reportDate')
+                total_value = equity_entry.get('total')
 
-                if report_date_str and ending_value:
+                if report_date_str and total_value:
                     try:
-                        # Parse date
-                        for fmt in ['%Y%m%d', '%Y-%m-%d']:
-                            try:
-                                nav_date = datetime.strptime(report_date_str, fmt).date()
-                                break
-                            except ValueError:
-                                continue
-                        else:
-                            continue
+                        nav_date = datetime.strptime(report_date_str, '%Y%m%d').date()
+                        historical.append(BalanceInfo(
+                            balance=Decimal(str(total_value)),
+                            currency=equity_entry.get('currency', currency),
+                            balance_date=nav_date
+                        ))
+                    except (ValueError, TypeError) as e:
+                        logger.debug(f"Failed to parse EquitySummaryByReportDateInBase entry: {e}")
 
-                        # Check if within requested range
-                        if start_date <= nav_date <= end_date:
+            # If we got data from EquitySummaryByReportDateInBase, we're done
+            if historical:
+                logger.info(f"IBKR: Found {len(historical)} entries from EquitySummaryByReportDateInBase")
+            else:
+                # Fallback: Look for ChangeInNAV entries with dates
+                for nav_entry in root.findall('.//ChangeInNAV'):
+                    report_date_str = nav_entry.get('reportDate') or nav_entry.get('toDate')
+                    ending_value = nav_entry.get('endingValue') or nav_entry.get('ending')
+
+                    if report_date_str and ending_value:
+                        try:
+                            for fmt in ['%Y%m%d', '%Y-%m-%d']:
+                                try:
+                                    nav_date = datetime.strptime(report_date_str, fmt).date()
+                                    break
+                                except ValueError:
+                                    continue
+                            else:
+                                continue
+
                             historical.append(BalanceInfo(
                                 balance=Decimal(str(ending_value)),
                                 currency=currency,
                                 balance_date=nav_date
                             ))
-                    except (ValueError, TypeError) as e:
-                        logger.debug(f"Failed to parse ChangeInNAV entry: {e}")
+                        except (ValueError, TypeError) as e:
+                            logger.debug(f"Failed to parse ChangeInNAV entry: {e}")
 
-            # Also look for MTMPerformanceSummaryInBase entries
-            for mtm_entry in root.findall('.//MTMPerformanceSummaryInBase'):
-                report_date_str = mtm_entry.get('reportDate')
-                # MTM uses different attribute names
-                ending_value = mtm_entry.get('mtmYTD') or mtm_entry.get('totalEndingValue')
+            # Also look for MTMPerformanceSummaryInBase entries (additional fallback)
+            if not historical:
+                for mtm_entry in root.findall('.//MTMPerformanceSummaryInBase'):
+                    report_date_str = mtm_entry.get('reportDate')
+                    ending_value = mtm_entry.get('mtmYTD') or mtm_entry.get('totalEndingValue')
 
-                if report_date_str and ending_value:
-                    try:
-                        for fmt in ['%Y%m%d', '%Y-%m-%d']:
-                            try:
-                                mtm_date = datetime.strptime(report_date_str, fmt).date()
-                                break
-                            except ValueError:
+                    if report_date_str and ending_value:
+                        try:
+                            for fmt in ['%Y%m%d', '%Y-%m-%d']:
+                                try:
+                                    mtm_date = datetime.strptime(report_date_str, fmt).date()
+                                    break
+                                except ValueError:
+                                    continue
+                            else:
                                 continue
-                        else:
-                            continue
 
-                        if start_date <= mtm_date <= end_date:
                             historical.append(BalanceInfo(
                                 balance=Decimal(str(ending_value)),
                                 currency=currency,
                                 balance_date=mtm_date
                             ))
-                    except (ValueError, TypeError) as e:
-                        logger.debug(f"Failed to parse MTM entry: {e}")
+                        except (ValueError, TypeError) as e:
+                            logger.debug(f"Failed to parse MTM entry: {e}")
 
             # Sort by date and deduplicate
             seen_dates = set()
@@ -583,7 +612,9 @@ class IBKRFlexIntegration(BrokerIntegrationBase):
                     seen_dates.add(bal.balance_date)
                     unique_historical.append(bal)
 
-            logger.info(f"IBKR Flex: Found {len(unique_historical)} historical balance entries")
+            if unique_historical:
+                date_range = f"{unique_historical[0].balance_date} to {unique_historical[-1].balance_date}"
+                logger.info(f"IBKR Flex: Found {len(unique_historical)} historical entries ({date_range})")
             return unique_historical
 
         except FileNotFoundError:
