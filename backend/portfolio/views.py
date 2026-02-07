@@ -1,115 +1,38 @@
 import logging
-import os
-import pickle
 import uuid
 from datetime import date, timedelta
 from decimal import Decimal
-from fcntl import flock, LOCK_EX, LOCK_UN
 from time import time
+
+from django.core.cache import cache
 
 logger = logging.getLogger(__name__)
 
-# File-based store for pending discovery sessions (2FA flows)
-# Uses pickle for serialization, file locking for concurrency
+# Discovery sessions stored in Django's file-based cache
 # Sessions expire after 10 minutes (photoTAN requires scanning + entering code)
 DISCOVERY_SESSION_TIMEOUT = 600  # 10 minutes
-DISCOVERY_SESSIONS_FILE = '/tmp/wealth_discovery_sessions.pkl'
-
-
-def _load_sessions() -> dict:
-    """Load sessions from file."""
-    if not os.path.exists(DISCOVERY_SESSIONS_FILE):
-        return {}
-    try:
-        with open(DISCOVERY_SESSIONS_FILE, 'rb') as f:
-            return pickle.load(f)
-    except Exception as e:
-        logger.warning(f"Failed to load discovery sessions: {e}")
-        return {}
-
-
-def _save_sessions(sessions: dict):
-    """Save sessions to file with locking."""
-    try:
-        with open(DISCOVERY_SESSIONS_FILE, 'wb') as f:
-            flock(f.fileno(), LOCK_EX)
-            try:
-                pickle.dump(sessions, f)
-            finally:
-                flock(f.fileno(), LOCK_UN)
-    except Exception as e:
-        logger.warning(f"Failed to save discovery sessions: {e}")
+DISCOVERY_SESSION_PREFIX = 'discovery_session_'
 
 
 def _get_session(token: str) -> dict | None:
-    """Get a session by token."""
-    sessions = _load_sessions()
-    return sessions.get(token)
+    """Get a session by token from Django cache."""
+    return cache.get(f'{DISCOVERY_SESSION_PREFIX}{token}')
 
 
 def _set_session(token: str, data: dict):
-    """Set a session."""
-    with open(DISCOVERY_SESSIONS_FILE, 'ab+') as f:
-        flock(f.fileno(), LOCK_EX)
-        try:
-            f.seek(0)
-            try:
-                sessions = pickle.load(f) if os.path.getsize(DISCOVERY_SESSIONS_FILE) > 0 else {}
-            except Exception:
-                sessions = {}
-            sessions[token] = data
-            f.seek(0)
-            f.truncate()
-            pickle.dump(sessions, f)
-        finally:
-            flock(f.fileno(), LOCK_UN)
+    """Set a session in Django cache."""
+    cache.set(f'{DISCOVERY_SESSION_PREFIX}{token}', data, timeout=DISCOVERY_SESSION_TIMEOUT)
 
 
 def _delete_session(token: str):
-    """Delete a session."""
-    with open(DISCOVERY_SESSIONS_FILE, 'ab+') as f:
-        flock(f.fileno(), LOCK_EX)
-        try:
-            f.seek(0)
-            try:
-                sessions = pickle.load(f) if os.path.getsize(DISCOVERY_SESSIONS_FILE) > 0 else {}
-            except Exception:
-                sessions = {}
-            sessions.pop(token, None)
-            f.seek(0)
-            f.truncate()
-            pickle.dump(sessions, f)
-        finally:
-            flock(f.fileno(), LOCK_UN)
+    """Delete a session from Django cache."""
+    cache.delete(f'{DISCOVERY_SESSION_PREFIX}{token}')
 
 
 def _cleanup_expired_sessions():
-    """Remove expired discovery sessions."""
-    now = time()
-    with open(DISCOVERY_SESSIONS_FILE, 'ab+') as f:
-        flock(f.fileno(), LOCK_EX)
-        try:
-            f.seek(0)
-            try:
-                sessions = pickle.load(f) if os.path.getsize(DISCOVERY_SESSIONS_FILE) > 0 else {}
-            except Exception:
-                sessions = {}
+    """Django cache handles expiration automatically - this is a no-op."""
+    pass
 
-            expired = [k for k, v in sessions.items()
-                       if now - v.get('created_at', 0) > DISCOVERY_SESSION_TIMEOUT]
-            for k in expired:
-                session = sessions.pop(k, None)
-                if session and session.get('integration'):
-                    try:
-                        session['integration'].close()
-                    except Exception:
-                        pass
-
-            f.seek(0)
-            f.truncate()
-            pickle.dump(sessions, f)
-        finally:
-            flock(f.fileno(), LOCK_UN)
 
 from django.utils import timezone
 from rest_framework import generics, status
