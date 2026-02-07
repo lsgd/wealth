@@ -34,15 +34,14 @@ def get_broker_integration(
         )
 
     if broker.code == 'ibkr':
-        # Check if using Flex Web Service (token-based) or Gateway
+        # IBKR uses Flex Web Service (requires flex_token and query_id)
         if credentials.get('flex_token') and credentials.get('query_id'):
             from .ibkr_flex import IBKRFlexIntegration
             return IBKRFlexIntegration(credentials=credentials)
         else:
-            from .ibkr import IBKRIntegration
-            return IBKRIntegration(
-                credentials=credentials,
-                gateway_url=broker.api_base_url or 'https://localhost:5000'
+            raise ValueError(
+                "IBKR requires flex_token and query_id credentials. "
+                "Get these from IBKR Client Portal > Reports > Flex Queries."
             )
 
     if broker.code == 'truewealth':
@@ -56,9 +55,5 @@ def get_broker_integration(
     if broker.code == 'morganstanley':
         from .morganstanley import MorganStanleyIntegration
         return MorganStanleyIntegration(credentials=credentials)
-
-    if broker.code == 'ibkr_flex':
-        from .ibkr_flex import IBKRFlexIntegration
-        return IBKRFlexIntegration(credentials=credentials)
 
     raise ValueError(f"Broker '{broker.code}' is not yet supported for automated sync.")

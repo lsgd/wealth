@@ -127,10 +127,20 @@ export default function AddAccountModal({ onClose, onCreated }: Props) {
     }
   };
 
-  const credentialFields = selectedBroker?.credential_schema?.properties
-    ? Object.entries(selectedBroker.credential_schema.properties)
-    : [];
   const requiredCreds = selectedBroker?.credential_schema?.required ?? [];
+  // Sort credential fields: required fields first (in order), then optional fields
+  const credentialFields = selectedBroker?.credential_schema?.properties
+    ? Object.entries(selectedBroker.credential_schema.properties).sort(([keyA], [keyB]) => {
+        const indexA = requiredCreds.indexOf(keyA);
+        const indexB = requiredCreds.indexOf(keyB);
+        // Required fields come first, in the order they appear in required array
+        if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+        if (indexA !== -1) return -1;
+        if (indexB !== -1) return 1;
+        // Optional fields maintain their original order
+        return 0;
+      })
+    : [];
 
   const handleDiscover = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -225,35 +225,29 @@
       "integration_type": "rest",
       "bank_identifier": "",
       "fints_server": "",
-      "api_base_url": "https://localhost:5000",
+      "api_base_url": "",
       "logo_url": "",
       "website_url": "https://www.interactivebrokers.com",
       "country": "US",
       "is_active": true,
-      "supports_2fa": true,
+      "supports_2fa": false,
       "credential_schema": {
         "type": "object",
-        "required": [],
+        "required": ["flex_token", "query_id"],
         "properties": {
-          "token": {
+          "flex_token": {
             "type": "string",
             "title": "Flex Token",
             "format": "password",
-            "description": "Flex Web Service token (recommended - get from Client Portal > Reports > Flex Queries)"
+            "description": "Flex Web Service token (get from Client Portal > Reports > Flex Queries > Enable)"
           },
           "query_id": {
             "type": "string",
             "title": "Query ID",
             "description": "Activity Flex Query ID (create in Client Portal > Reports > Flex Queries)"
-          },
-          "gateway_url": {
-            "type": "string",
-            "title": "Gateway URL",
-            "default": "https://localhost:5000",
-            "description": "Client Portal Gateway URL (alternative to Flex - requires local gateway)"
           }
         },
-        "description": "Use Flex Token + Query ID (recommended) OR Gateway URL. Flex is simpler and doesn't require local software."
+        "description": "Uses IBKR Flex Web Service. Create a Flex Query in Client Portal > Reports > Flex Queries."
       },
       "created_at": "2026-01-20T00:00:00Z",
       "updated_at": "2026-01-20T00:00:00Z"
