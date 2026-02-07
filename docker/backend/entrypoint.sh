@@ -35,11 +35,13 @@ if test -f "/crontabs"; then
 fi
 
 # Start gunicorn with uvicorn worker
-# Discovery sessions stored in /tmp/wealth_discovery_sessions.pkl (shared across workers)
+# NOTE: Using 1 worker because FinTS (German banks) requires maintaining
+# an active TCP connection during 2FA. The bank closes dialogs that are
+# paused/serialized, making multi-worker 2FA impossible without Redis.
 python -m gunicorn \
   ${DJANGO_PROJECT_NAME}.asgi:application \
   --bind 0.0.0.0:8000 \
-  --workers 4 \
+  --workers 1 \
   --worker-class uvicorn_worker.UvicornWorker \
   --chdir ${APP_PATH} \
   --access-logformat "%({x-forwarded-for}i)s %(l)s %(u)s %(t)s \"%(r)s\" %(s)s %(b)s \"%(f)s\" \"%(a)s\"" \

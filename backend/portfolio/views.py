@@ -830,20 +830,12 @@ class BrokerDiscoverView(APIView):
 
             if not auth_result.success:
                 if auth_result.requires_2fa:
-                    # Generate session token and store serializable state for 2FA completion
-                    # IMPORTANT: Don't store the integration object - it contains unpicklable
-                    # network connections. Instead, store dialog state that can be resumed.
+                    # Generate session token and store integration for 2FA completion
+                    # NOTE: Using 1 gunicorn worker, so in-memory storage works
                     session_token = str(uuid.uuid4())
-
-                    # Get serialized dialog state if the integration supports it (FinTS)
-                    dialog_data = None
-                    if hasattr(integration, 'get_pause_state'):
-                        dialog_data = integration.get_pause_state()
-
                     _set_session(session_token, {
+                        'integration': integration,
                         'broker_code': broker_code,
-                        'credentials': credentials,  # Need to recreate integration
-                        'dialog_data': dialog_data,  # Serialized FinTS state
                         'session_data': auth_result.session_data or {},
                         'created_at': time(),
                     })
@@ -922,49 +914,29 @@ class BrokerDiscoverCompleteAuthView(APIView):
 
         # Check if session is expired
         if time() - session.get('created_at', 0) > DISCOVERY_SESSION_TIMEOUT:
+            integration = session.get('integration')
+            if integration:
+                try:
+                    integration.close()
+                except Exception:
+                    pass
             _delete_session(session_token)
             return Response(
                 {'error': 'Session expired. Please restart discovery.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        from brokers.integrations import get_broker_integration
-        from brokers.models import Broker
-
-        broker_code = session.get('broker_code')
-        credentials = session.get('credentials')
-        dialog_data = session.get('dialog_data')
+        integration = session.get('integration')
         session_data = session.get('session_data', {})
 
-        if not broker_code or not credentials:
+        if not integration:
             _delete_session(session_token)
             return Response(
-                {'error': 'Invalid session data. Please restart discovery.'},
+                {'error': 'Invalid session. Please restart discovery.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
         try:
-            broker = Broker.objects.get(code=broker_code, is_active=True)
-        except Broker.DoesNotExist:
-            _delete_session(session_token)
-            return Response(
-                {'error': f'Broker "{broker_code}" not found'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-        try:
-            # Recreate integration and restore dialog state
-            integration = get_broker_integration(broker, credentials)
-
-            # Restore FinTS dialog state if available
-            if dialog_data and hasattr(integration, 'restore_from_pause'):
-                if not integration.restore_from_pause(dialog_data):
-                    _delete_session(session_token)
-                    return Response(
-                        {'error': 'Failed to restore session. Please restart discovery.'},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
-
             # Complete 2FA
             auth_result = integration.complete_2fa(auth_code, session_data)
 
