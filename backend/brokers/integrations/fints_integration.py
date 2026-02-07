@@ -77,6 +77,61 @@ class FinTSIntegration(BrokerIntegrationBase):
         self._accounts = None
         self._authenticated = False
 
+    def get_pause_state(self) -> Optional[dict]:
+        """Get serializable state for cross-worker persistence.
+
+        Returns dict with 'client_data' (from deconstruct) and 'dialog_data' (from pause_dialog).
+        """
+        if not self._client:
+            return None
+        try:
+            # Get full client state including credentials
+            client_data = self._client.deconstruct(including_private=True)
+            # Get dialog-specific state (for resuming mid-authentication)
+            dialog_data = self._client.pause_dialog()
+            logger.info(f"FinTS: Paused dialog, client_data={len(client_data)} bytes, dialog_data={len(dialog_data) if dialog_data else 0} bytes")
+            return {
+                'client_data': client_data,
+                'dialog_data': dialog_data,
+            }
+        except Exception as e:
+            logger.warning(f"Failed to pause FinTS dialog: {e}")
+            return None
+
+    def restore_from_pause(self, state: dict) -> bool:
+        """Restore FinTS client from serialized state."""
+        if not state:
+            return False
+        try:
+            client_data = state.get('client_data')
+            dialog_data = state.get('dialog_data')
+
+            if not client_data:
+                logger.error("No client_data in pause state")
+                return False
+
+            # Recreate client from serialized state
+            self._client = FinTS3PinTanClient(
+                product_id=self.PRODUCT_ID,
+                bank_identifier=self.bank_identifier,
+                server=self.fints_server,
+                user_id=self.credentials.get('username'),
+                pin=self.credentials.get('pin'),
+                from_data=client_data,
+            )
+
+            # Resume dialog if we have dialog data
+            if dialog_data:
+                self._client.resume_dialog(dialog_data)
+                logger.info("FinTS: Successfully restored client and resumed dialog")
+            else:
+                logger.info("FinTS: Successfully restored client (no dialog data)")
+
+            return True
+        except Exception as e:
+            logger.exception(f"Failed to restore FinTS client: {e}")
+            return False
+
     def authenticate(self) -> AuthResult:
         """Initialize FinTS client and start authentication."""
         try:
