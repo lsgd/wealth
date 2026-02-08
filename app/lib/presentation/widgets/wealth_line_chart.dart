@@ -56,14 +56,35 @@ class _WealthLineChartState extends ConsumerState<WealthLineChart> {
     final minY = spots.map((s) => s.y).reduce((a, b) => a < b ? a : b);
     final maxY = spots.map((s) => s.y).reduce((a, b) => a > b ? a : b);
 
-    // Calculate step size: always 5 ticks (4 intervals), step must be multiple of 50k
+    // Calculate step size for exactly 5 ticks (4 intervals)
+    // Step must be a multiple of 50k
     const baseStep = 50000.0;
     final range = maxY - minY;
-    final rawStep = range / 4; // 4 intervals = 5 ticks
-    final stepSize = ((rawStep / baseStep).ceil().clamp(1, 1000)) * baseStep;
-    final roundedMin = (minY / stepSize).floor() * stepSize;
-    final roundedMax = roundedMin + (stepSize * 4); // Exactly 5 ticks
+    // Calculate step that covers range in ~4 intervals, rounded up to 50k multiple
+    var stepSize = ((range / 4 / baseStep).ceil()) * baseStep;
+    if (stepSize < baseStep) stepSize = baseStep;
+
+    // Calculate bounds that cover the data with whole step increments
+    var roundedMin = (minY / stepSize).floor() * stepSize;
+    var roundedMax = (maxY / stepSize).ceil() * stepSize;
+
+    // Ensure we have exactly 4 intervals (5 ticks) by adjusting bounds
+    final intervals = ((roundedMax - roundedMin) / stepSize).round();
+    if (intervals < 4) {
+      // Extend max to get 4 intervals
+      roundedMax = roundedMin + (stepSize * 4);
+    } else if (intervals > 4) {
+      // Increase step size to fit in 4 intervals
+      stepSize = ((roundedMax - roundedMin) / 4 / baseStep).ceil() * baseStep;
+      roundedMin = (minY / stepSize).floor() * stepSize;
+      roundedMax = roundedMin + (stepSize * 4);
+    }
+
     final gridInterval = stepSize;
+
+    // Get the marked point for display
+    final markedPoint =
+        _markedIndex != null ? widget.history[_markedIndex!] : null;
 
     return Card(
       child: Padding(
@@ -132,7 +153,27 @@ class _WealthLineChartState extends ConsumerState<WealthLineChart> {
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
+            // Selected point display (fixed position above chart)
+            Container(
+              height: 40,
+              alignment: Alignment.center,
+              child: markedPoint != null
+                  ? Text(
+                      '${formatDate(markedPoint.dateTime, dateFormat)}  •  ${formatCurrency(markedPoint.totalWealth, widget.currency)}',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                    )
+                  : Text(
+                      'Tap chart to select a point',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color:
+                                Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                    ),
+            ),
+            const SizedBox(height: 8),
             // Chart
             SizedBox(
               height: 200,
@@ -196,13 +237,9 @@ class _WealthLineChartState extends ConsumerState<WealthLineChart> {
                     leftTitles: AxisTitles(
                       sideTitles: SideTitles(
                         showTitles: true,
-                        reservedSize: 45,
+                        reservedSize: 50,
                         interval: gridInterval,
                         getTitlesWidget: (value, meta) {
-                          // Skip edge values to avoid overlap
-                          if (value == meta.min || value == meta.max) {
-                            return const SizedBox.shrink();
-                          }
                           return Text(
                             formatChartAxisValue(value),
                             style:
@@ -284,27 +321,9 @@ class _WealthLineChartState extends ConsumerState<WealthLineChart> {
                         }
                       }
                     },
+                    // Disable tooltip overlay - info shown above chart
                     touchTooltipData: LineTouchTooltipData(
-                      maxContentWidth: 180,
-                      fitInsideHorizontally: true,
-                      fitInsideVertically: true,
-                      tooltipMargin: 16,
-                      getTooltipColor: (touchedSpot) =>
-                          Theme.of(context).colorScheme.surfaceContainerHighest,
-                      getTooltipItems: (touchedSpots) {
-                        return touchedSpots.map((spot) {
-                          final index = spot.x.toInt();
-                          if (index < 0 || index >= widget.history.length) return null;
-                          final point = widget.history[index];
-                          return LineTooltipItem(
-                            '${formatDate(point.dateTime, dateFormat)}\n${formatCurrency(point.totalWealth, widget.currency)}',
-                            TextStyle(
-                              color: Theme.of(context).colorScheme.onSurface,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          );
-                        }).toList();
-                      },
+                      getTooltipItems: (_) => [],
                     ),
                     getTouchedSpotIndicator: (barData, spotIndexes) {
                       return spotIndexes.map((index) {
@@ -329,17 +348,21 @@ class _WealthLineChartState extends ConsumerState<WealthLineChart> {
                       }).toList();
                     },
                   ),
-                  showingTooltipIndicators: _markedIndex != null
-                      ? [
-                          ShowingTooltipIndicators([
-                            LineBarSpot(
-                              LineChartBarData(spots: spots),
-                              0,
-                              spots[_markedIndex!],
+                  // No tooltip indicators - info shown above chart
+                  showingTooltipIndicators: [],
+                  // Vertical line for marked point
+                  extraLinesData: _markedIndex != null
+                      ? ExtraLinesData(
+                          verticalLines: [
+                            VerticalLine(
+                              x: _markedIndex!.toDouble(),
+                              color: Theme.of(context).colorScheme.primary,
+                              strokeWidth: 1,
+                              dashArray: [4, 4],
                             ),
-                          ])
-                        ]
-                      : [],
+                          ],
+                        )
+                      : ExtraLinesData(),
                 ),
               ),
             ),
