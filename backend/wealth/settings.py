@@ -22,11 +22,13 @@ DEBUG = os.getenv('DJANGO_DEBUG', 'True').lower() == 'true'
 ALLOWED_HOSTS = os.getenv('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
 
 # Encryption key for credentials (generate with: from cryptography.fernet import Fernet; Fernet.generate_key())
-# Development default - set CREDENTIAL_ENCRYPTION_KEY env var in production
-CREDENTIAL_ENCRYPTION_KEY = os.getenv(
-    'CREDENTIAL_ENCRYPTION_KEY',
-    'jAc7RENUagBwvFpMH7u8sp5x_RGLr2Vxxg0oN0a7SVs='  # Dev only
-)
+CREDENTIAL_ENCRYPTION_KEY = os.getenv('CREDENTIAL_ENCRYPTION_KEY')
+if not CREDENTIAL_ENCRYPTION_KEY:
+    from django.core.exceptions import ImproperlyConfigured
+    raise ImproperlyConfigured(
+        'CREDENTIAL_ENCRYPTION_KEY environment variable is required. '
+        'Generate one with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"'
+    )
 
 
 # Application definition
