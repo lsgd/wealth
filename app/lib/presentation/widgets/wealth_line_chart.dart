@@ -24,6 +24,7 @@ class WealthLineChart extends ConsumerStatefulWidget {
 
 class _WealthLineChartState extends ConsumerState<WealthLineChart> {
   int? _markedIndex;
+  int? _lastTouchedIndex;
 
   @override
   Widget build(BuildContext context) {
@@ -55,10 +56,13 @@ class _WealthLineChartState extends ConsumerState<WealthLineChart> {
     final minY = spots.map((s) => s.y).reduce((a, b) => a < b ? a : b);
     final maxY = spots.map((s) => s.y).reduce((a, b) => a > b ? a : b);
 
-    // Calculate 50k step interval and round min/max to 50k boundaries
-    const stepSize = 50000.0;
+    // Calculate step size: always 5 ticks (4 intervals), step must be multiple of 50k
+    const baseStep = 50000.0;
+    final range = maxY - minY;
+    final rawStep = range / 4; // 4 intervals = 5 ticks
+    final stepSize = ((rawStep / baseStep).ceil().clamp(1, 1000)) * baseStep;
     final roundedMin = (minY / stepSize).floor() * stepSize;
-    final roundedMax = ((maxY / stepSize).ceil() + 1) * stepSize;
+    final roundedMax = roundedMin + (stepSize * 4); // Exactly 5 ticks
     final gridInterval = stepSize;
 
     return Card(
@@ -250,22 +254,32 @@ class _WealthLineChartState extends ConsumerState<WealthLineChart> {
                   lineTouchData: LineTouchData(
                     handleBuiltInTouches: true,
                     touchCallback: (event, response) {
+                      // Track current touch position
+                      final touchedIndex =
+                          response?.lineBarSpots?.firstOrNull?.x.toInt();
+                      if (touchedIndex != null) {
+                        _lastTouchedIndex = touchedIndex;
+                      }
+
                       // Tap clears the marked point
                       if (event is FlTapUpEvent) {
                         if (_markedIndex != null) {
                           setState(() {
                             _markedIndex = null;
+                            _lastTouchedIndex = null;
                           });
                         }
                         return;
                       }
-                      // Drag release marks the current point
-                      if (event is FlPanEndEvent || event is FlLongPressEnd) {
-                        final touchedIndex =
-                            response?.lineBarSpots?.firstOrNull?.x.toInt();
-                        if (touchedIndex != null) {
+
+                      // Finger lifted - mark the last touched position
+                      if (event is FlPointerExitEvent ||
+                          event is FlPanEndEvent ||
+                          event is FlLongPressEnd) {
+                        if (_lastTouchedIndex != null) {
                           setState(() {
-                            _markedIndex = touchedIndex;
+                            _markedIndex = _lastTouchedIndex;
+                            _lastTouchedIndex = null;
                           });
                         }
                       }
