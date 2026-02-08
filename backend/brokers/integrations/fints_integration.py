@@ -2,6 +2,7 @@
 FinTS integration for German banks (DKB, Commerzbank).
 """
 import logging
+import os
 from datetime import date
 from decimal import Decimal
 from time import sleep
@@ -61,8 +62,8 @@ def _translate_fints_error(error: Exception) -> str:
 class FinTSIntegration(BrokerIntegrationBase):
     """Integration for German banks using FinTS protocol."""
 
-    # FinTS product ID for this application
-    PRODUCT_ID = 'literal:os.environ.get('FINTS_PRODUCT_ID', '')'
+    # FinTS product ID for this application (from environment)
+    PRODUCT_ID = os.environ.get('FINTS_PRODUCT_ID', '')
 
     def __init__(
         self,
