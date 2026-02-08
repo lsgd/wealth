@@ -253,6 +253,10 @@ class _QuickSnapshotSheetState extends ConsumerState<QuickSnapshotSheet>
                     : AnimatedList(
                         key: _listKey,
                         controller: scrollController,
+                        // Add padding at bottom to account for keyboard
+                        padding: EdgeInsets.only(
+                          bottom: MediaQuery.of(context).viewInsets.bottom,
+                        ),
                         initialItemCount: _visibleAccounts.length,
                         itemBuilder: (context, index, animation) {
                           if (index >= _visibleAccounts.length) {
