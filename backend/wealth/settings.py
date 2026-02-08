@@ -153,6 +153,12 @@ CORS_ALLOWED_ORIGINS = os.getenv(
 ).split(',')
 CORS_ALLOW_CREDENTIALS = True
 
+# CSRF Settings (required for admin behind reverse proxy)
+CSRF_TRUSTED_ORIGINS = os.getenv(
+    'CSRF_TRUSTED_ORIGINS',
+    'http://localhost:3000,http://127.0.0.1:3000'
+).split(',')
+
 # Static files for production
 STATIC_ROOT = os.getenv('STATIC_ROOT', BASE_DIR / 'staticfiles')
 
