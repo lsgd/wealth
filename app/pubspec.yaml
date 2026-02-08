@@ -55,5 +55,16 @@ dev_dependencies:
   json_serializable: ^6.7.0
   riverpod_generator: ^2.6.0
 
+  # App Icon
+  flutter_launcher_icons: ^0.14.3
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/icon/app_icon.png"
+  remove_alpha_ios: true
+  adaptive_icon_background: "#4CAF50"
+  adaptive_icon_foreground: "assets/icon/app_icon_foreground.png"
+
 flutter:
   uses-material-design: true
