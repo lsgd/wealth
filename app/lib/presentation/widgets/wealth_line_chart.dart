@@ -295,14 +295,18 @@ class _WealthLineChartState extends ConsumerState<WealthLineChart> {
                       final touchedIndex =
                           response?.lineBarSpots?.firstOrNull?.x.toInt();
 
-                      // Tap clears the marked point
+                      // Tap toggles selection: select if none, clear if already selected
                       if (event is FlTapUpEvent) {
-                        if (_markedIndex != null || _lastTouchedIndex != null) {
-                          setState(() {
+                        setState(() {
+                          if (_markedIndex != null) {
+                            // Clear existing selection
                             _markedIndex = null;
-                            _lastTouchedIndex = null;
-                          });
-                        }
+                          } else if (touchedIndex != null) {
+                            // Select tapped point
+                            _markedIndex = touchedIndex;
+                          }
+                          _lastTouchedIndex = null;
+                        });
                         return;
                       }
 
