@@ -50,6 +50,7 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    'wealth.middleware.RequestLoggingMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -191,3 +192,42 @@ HISTORICAL_BACKFILL_MAX_LOOKBACK_DAYS = int(os.getenv('HISTORICAL_BACKFILL_MAX_L
 HISTORICAL_BACKFILL_BUFFER_DAYS = int(os.getenv('HISTORICAL_BACKFILL_BUFFER_DAYS', '5'))
 # Skip backfill if we have a snapshot within this many days
 HISTORICAL_BACKFILL_SKIP_IF_RECENT_DAYS = int(os.getenv('HISTORICAL_BACKFILL_SKIP_IF_RECENT_DAYS', '2'))
+
+# Logging - JSON format for OpenObserve integration
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'json': {
+            '()': 'pythonjsonlogger.jsonlogger.JsonFormatter',
+            'format': '%(asctime)s %(levelname)s %(name)s %(module)s %(funcName)s %(lineno)d %(message)s',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'json',
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'INFO',
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'django.request': {
+            'handlers': ['console'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
+        'django.db.backends': {
+            'handlers': ['console'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
+    },
+}
