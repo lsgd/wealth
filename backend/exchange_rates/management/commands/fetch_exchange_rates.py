@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from decimal import Decimal
 
 from django.core.management.base import BaseCommand
 
@@ -29,6 +30,11 @@ class Command(BaseCommand):
             type=str,
             help='End date for backfill (YYYY-MM-DD). Defaults to today.',
         )
+        parser.add_argument(
+            '--skip-conversions',
+            action='store_true',
+            help='Skip fixing missing snapshot conversions.',
+        )
 
     def handle(self, *args, **options):
         if options['backfill']:
@@ -37,6 +43,10 @@ class Command(BaseCommand):
             self._handle_date(options['date'])
         else:
             self._handle_latest()
+
+        # Fix missing conversions unless skipped
+        if not options.get('skip_conversions'):
+            self._fix_missing_conversions()
 
     def _handle_latest(self):
         self.stdout.write('Fetching latest exchange rates...')
@@ -72,3 +82,49 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS(
             f'Backfilled {count} exchange rates'
         ))
+
+    def _fix_missing_conversions(self):
+        """Fix snapshots that are missing base currency conversions."""
+        from portfolio.models import AccountSnapshot
+
+        # Find snapshots missing base currency conversion
+        snapshots = AccountSnapshot.objects.filter(
+            balance_base_currency__isnull=True
+        ).select_related('account__user__profile')[:100]  # Limit to 100 per run
+
+        if not snapshots:
+            return
+
+        self.stdout.write(f'Fixing {len(snapshots)} snapshots with missing conversions...')
+
+        fixed = 0
+        for snapshot in snapshots:
+            try:
+                user_profile = snapshot.account.user.profile
+                base_currency = user_profile.base_currency
+
+                if snapshot.currency == base_currency:
+                    snapshot.balance_base_currency = snapshot.balance
+                    snapshot.base_currency = base_currency
+                    snapshot.exchange_rate_used = Decimal('1')
+                    snapshot.save()
+                    fixed += 1
+                    continue
+
+                rate = ExchangeRateService.get_rate(
+                    snapshot.currency,
+                    base_currency,
+                    snapshot.snapshot_date
+                )
+
+                if rate and rate != Decimal('1.0'):
+                    snapshot.balance_base_currency = snapshot.balance * rate
+                    snapshot.base_currency = base_currency
+                    snapshot.exchange_rate_used = rate
+                    snapshot.save()
+                    fixed += 1
+
+            except Exception as e:
+                self.stderr.write(f'Error fixing snapshot {snapshot.id}: {e}')
+
+        self.stdout.write(self.style.SUCCESS(f'Fixed {fixed} snapshot conversions'))
