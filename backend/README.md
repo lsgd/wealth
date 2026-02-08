@@ -228,6 +228,41 @@ python manage.py shell
 python manage.py check
 ```
 
+### Exchange Rates
+
+```bash
+# Fetch today's exchange rates (also fixes missing snapshot conversions)
+python manage.py fetch_exchange_rates
+
+# Fetch rates for a specific date
+python manage.py fetch_exchange_rates --date 2024-01-15
+
+# Backfill historical rates
+python manage.py fetch_exchange_rates --backfill --start 2024-01-01 --end 2024-06-30
+
+# Skip auto-fixing missing conversions
+python manage.py fetch_exchange_rates --skip-conversions
+```
+
+### Snapshot Maintenance
+
+```bash
+# Fix snapshots missing base currency conversions
+python manage.py fix_missing_conversions
+
+# Preview without making changes
+python manage.py fix_missing_conversions --dry-run
+
+# Limit to N snapshots
+python manage.py fix_missing_conversions --limit 50
+
+# Backfill historical snapshot data for all accounts
+python manage.py backfill_snapshots
+
+# Send weekly wealth report emails
+python manage.py send_wealth_report
+```
+
 ## Testing
 
 ```bash
