@@ -84,7 +84,9 @@ export default function WealthChart({ history, baseCurrency, onRangeChange, defa
     if (granularity === 'monthly') {
       return dt.toLocaleDateString('de-CH', { month: 'short', year: '2-digit' });
     }
-    return `${dt.getDate()}.${dt.getMonth() + 1}`;
+    // Show year for daily view as well
+    const year = dt.getFullYear().toString().slice(-2);
+    return `${dt.getDate()}.${dt.getMonth() + 1}.${year}`;
   };
 
 

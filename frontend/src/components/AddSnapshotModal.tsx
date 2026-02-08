@@ -73,19 +73,6 @@ export default function AddSnapshotModal({
             />
           </div>
           <div className="form-group">
-            <label htmlFor="currency">Currency</label>
-            <select
-              id="currency"
-              value={currency}
-              onChange={(e) => setCurrency(e.target.value)}
-            >
-              <option value="EUR">EUR</option>
-              <option value="USD">USD</option>
-              <option value="CHF">CHF</option>
-              <option value="GBP">GBP</option>
-            </select>
-          </div>
-          <div className="form-group">
             <label htmlFor="date">Date</label>
             <input
               id="date"
@@ -94,6 +81,21 @@ export default function AddSnapshotModal({
               value={date}
               onChange={(e) => setDate(e.target.value)}
             />
+          </div>
+          <div className="form-group">
+            <label>Currency</label>
+            <div className="button-group">
+              {['EUR', 'USD', 'CHF', 'GBP'].map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  className={`btn btn-sm ${currency === c ? 'btn-primary' : 'btn-ghost'}`}
+                  onClick={() => setCurrency(c)}
+                >
+                  {c}
+                </button>
+              ))}
+            </div>
           </div>
           <div className="form-actions">
             <button type="button" className="btn btn-ghost" onClick={onClose}>

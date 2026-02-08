@@ -667,6 +667,13 @@ class WealthHistoryView(APIView):
         end_date = date.today()
         start_date = end_date - timedelta(days=days)
 
+        # Limit start_date to oldest snapshot date if more recent
+        oldest_snapshot = AccountSnapshot.objects.filter(
+            account__user=request.user
+        ).order_by('snapshot_date').first()
+        if oldest_snapshot and oldest_snapshot.snapshot_date > start_date:
+            start_date = oldest_snapshot.snapshot_date
+
         # Get all snapshots up to end_date (including before start_date for carry-forward)
         snapshots = AccountSnapshot.objects.filter(
             account__user=request.user,

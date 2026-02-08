@@ -1,0 +1,242 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../data/models/account.dart';
+import '../providers/accounts_provider.dart';
+
+class QuickSnapshotSheet extends ConsumerStatefulWidget {
+  final List<Account> accounts;
+  final VoidCallback onDismiss;
+  final VoidCallback onSnapshotsAdded;
+
+  const QuickSnapshotSheet({
+    super.key,
+    required this.accounts,
+    required this.onDismiss,
+    required this.onSnapshotsAdded,
+  });
+
+  @override
+  ConsumerState<QuickSnapshotSheet> createState() => _QuickSnapshotSheetState();
+}
+
+class _QuickSnapshotSheetState extends ConsumerState<QuickSnapshotSheet> {
+  final Map<int, TextEditingController> _controllers = {};
+  final Set<int> _submitting = {};
+  final Set<int> _completed = {};
+  final Map<int, String> _errors = {};
+
+  @override
+  void initState() {
+    super.initState();
+    for (final account in widget.accounts) {
+      // Empty field - user must enter the balance
+      _controllers[account.id] = TextEditingController();
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final controller in _controllers.values) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<void> _submitSnapshot(Account account) async {
+    final balanceText = _controllers[account.id]?.text ?? '';
+    final balance = double.tryParse(balanceText);
+    if (balance == null) {
+      setState(() {
+        _errors[account.id] = 'Please enter a valid number';
+      });
+      return;
+    }
+
+    setState(() {
+      _submitting.add(account.id);
+      _errors.remove(account.id);
+    });
+
+    try {
+      final repository = ref.read(accountRepositoryProvider);
+      await repository.addSnapshot(
+        accountId: account.id,
+        balance: balance,
+        currency: account.currency,
+        snapshotDate: DateTime.now(),
+      );
+
+      setState(() {
+        _submitting.remove(account.id);
+        _completed.add(account.id);
+      });
+    } catch (e) {
+      setState(() {
+        _submitting.remove(account.id);
+        _errors[account.id] = e.toString();
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final remainingAccounts =
+        widget.accounts.where((a) => !_completed.contains(a.id)).toList();
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.5,
+      minChildSize: 0.3,
+      maxChildSize: 0.9,
+      expand: false,
+      builder: (context, scrollController) {
+        return Container(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Handle bar
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.outlineVariant,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // Title
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Quick Balance Update',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  TextButton(
+                    onPressed: widget.onDismiss,
+                    child: const Text('Skip'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Update today\'s balances for your manual accounts',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+              ),
+              const SizedBox(height: 24),
+
+              // Account list
+              Expanded(
+                child: remainingAccounts.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.check_circle,
+                              size: 64,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              'All done!',
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
+                            const SizedBox(height: 24),
+                            FilledButton(
+                              onPressed: widget.onSnapshotsAdded,
+                              child: const Text('Continue'),
+                            ),
+                          ],
+                        ),
+                      )
+                    : ListView.builder(
+                        controller: scrollController,
+                        itemCount: remainingAccounts.length,
+                        itemBuilder: (context, index) {
+                          final account = remainingAccounts[index];
+                          final isSubmitting =
+                              _submitting.contains(account.id);
+                          final error = _errors[account.id];
+
+                          return Card(
+                            margin: const EdgeInsets.only(bottom: 12),
+                            child: Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    account.name,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleMedium
+                                        ?.copyWith(
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                  ),
+                                  Text(
+                                    account.broker.name,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodySmall
+                                        ?.copyWith(
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .onSurfaceVariant,
+                                        ),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: TextField(
+                                          controller: _controllers[account.id],
+                                          keyboardType: const TextInputType
+                                              .numberWithOptions(decimal: true),
+                                          decoration: InputDecoration(
+                                            labelText:
+                                                'Balance (${account.currency})',
+                                            isDense: true,
+                                            errorText: error,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      FilledButton(
+                                        onPressed: isSubmitting
+                                            ? null
+                                            : () => _submitSnapshot(account),
+                                        child: isSubmitting
+                                            ? const SizedBox(
+                                                width: 20,
+                                                height: 20,
+                                                child:
+                                                    CircularProgressIndicator(
+                                                  strokeWidth: 2,
+                                                ),
+                                              )
+                                            : const Text('Save'),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
