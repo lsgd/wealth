@@ -183,6 +183,7 @@ class WealthLineChart extends ConsumerWidget {
                       sideTitles: SideTitles(
                         showTitles: true,
                         reservedSize: 45,
+                        interval: gridInterval,
                         getTitlesWidget: (value, meta) {
                           // Skip edge values to avoid overlap
                           if (value == meta.min || value == meta.max) {
