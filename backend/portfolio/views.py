@@ -188,12 +188,13 @@ class AccountSyncView(APIView):
             # Convert to base currency (only if newly created or missing conversion)
             user_profile = request.user.profile
             if balance_info.currency != user_profile.base_currency:
-                rate = ExchangeRate.get_rate(
+                from exchange_rates.services import ExchangeRateService
+                rate = ExchangeRateService.get_rate(
                     balance_info.currency,
                     user_profile.base_currency,
                     balance_info.balance_date
                 )
-                if rate:
+                if rate and rate != Decimal('1.0'):
                     snapshot.balance_base_currency = balance_info.balance * rate
                     snapshot.base_currency = user_profile.base_currency
                     snapshot.exchange_rate_used = rate
@@ -323,10 +324,11 @@ class AccountSyncView(APIView):
 
                 # Convert to base currency
                 if bal_info.currency != base_currency:
-                    rate = ExchangeRate.get_rate(
+                    from exchange_rates.services import ExchangeRateService
+                    rate = ExchangeRateService.get_rate(
                         bal_info.currency, base_currency, bal_info.balance_date
                     )
-                    if rate:
+                    if rate and rate != Decimal('1.0'):
                         snapshot.balance_base_currency = bal_info.balance * rate
                         snapshot.base_currency = base_currency
                         snapshot.exchange_rate_used = rate
@@ -1224,18 +1226,20 @@ class CSVImportView(APIView):
                         existing.save()
                         imported += 1
                 else:
-                    # Create new snapshot
+                    # Create new snapshot (imported = manual)
                     snapshot = AccountSnapshot.objects.create(
                         account=account,
                         snapshot_date=snapshot_date,
                         balance=balance,
                         currency=currency,
+                        snapshot_source='manual',
                     )
 
                     # Convert to base currency if needed
                     if currency != base_currency:
-                        rate = ExchangeRate.get_rate(currency, base_currency, snapshot_date)
-                        if rate:
+                        from exchange_rates.services import ExchangeRateService
+                        rate = ExchangeRateService.get_rate(currency, base_currency, snapshot_date)
+                        if rate and rate != Decimal('1.0'):
                             snapshot.balance_base_currency = balance * rate
                             snapshot.base_currency = base_currency
                             snapshot.exchange_rate_used = rate
@@ -1247,18 +1251,6 @@ class CSVImportView(APIView):
                         snapshot.save()
 
                     imported += 1
-
-                    # Fetch exchange rate if missing
-                    if currency != base_currency and not ExchangeRate.objects.filter(
-                        from_currency=currency,
-                        to_currency=base_currency,
-                        rate_date=snapshot_date
-                    ).exists():
-                        from exchange_rates.services import ExchangeRateService
-                        try:
-                            ExchangeRateService.fetch_rates_for_date(snapshot_date)
-                        except Exception as e:
-                            logger.warning(f'Failed to fetch exchange rate for {snapshot_date}: {e}')
 
             except Exception as e:
                 errors.append(f'Row {row_num}: {str(e)}')
