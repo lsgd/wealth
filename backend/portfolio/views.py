@@ -349,6 +349,140 @@ class AccountSyncView(APIView):
             return 0
 
 
+class SyncAllAccountsView(APIView):
+    """Trigger sync for all accounts that support auto-sync."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        from brokers.integrations import get_broker_integration
+        from core.encryption import decrypt_credentials
+
+        # Find all syncable accounts
+        accounts = FinancialAccount.objects.filter(
+            user=request.user,
+            is_manual=False,
+            sync_enabled=True,
+        ).exclude(encrypted_credentials__isnull=True).exclude(encrypted_credentials=b'')
+
+        results = {
+            'synced': [],
+            'pending_2fa': [],
+            'errors': [],
+            'skipped': [],
+        }
+
+        for account in accounts:
+            try:
+                credentials = decrypt_credentials(account.encrypted_credentials)
+                integration = get_broker_integration(account.broker, credentials)
+                auth_result = integration.authenticate()
+
+                if not auth_result.success:
+                    if auth_result.requires_2fa:
+                        account.status = 'pending_auth'
+                        account.pending_auth_state = {
+                            'two_fa_type': auth_result.two_fa_type,
+                            'session_data': auth_result.session_data,
+                        }
+                        account.save()
+                        results['pending_2fa'].append({
+                            'id': account.id,
+                            'name': account.name,
+                            'two_fa_type': auth_result.two_fa_type,
+                        })
+                        integration.close()
+                        continue
+                    else:
+                        account.status = 'error'
+                        account.last_sync_error = auth_result.error_message
+                        account.save()
+                        results['errors'].append({
+                            'id': account.id,
+                            'name': account.name,
+                            'error': auth_result.error_message,
+                        })
+                        integration.close()
+                        continue
+
+                # Auth successful - sync the account
+                balance_info = integration.get_balance(account.account_identifier)
+
+                # Check for existing snapshot
+                existing = AccountSnapshot.objects.filter(
+                    account=account,
+                    balance=balance_info.balance,
+                    currency=balance_info.currency,
+                    snapshot_date=balance_info.balance_date
+                ).first()
+
+                if existing:
+                    results['skipped'].append({
+                        'id': account.id,
+                        'name': account.name,
+                        'reason': 'No change',
+                    })
+                else:
+                    snapshot = AccountSnapshot.objects.create(
+                        account=account,
+                        balance=balance_info.balance,
+                        currency=balance_info.currency,
+                        snapshot_date=balance_info.balance_date,
+                        snapshot_source='auto',
+                        raw_data=balance_info.raw_data
+                    )
+
+                    # Convert to base currency
+                    user_profile = request.user.profile
+                    if balance_info.currency != user_profile.base_currency:
+                        from exchange_rates.services import ExchangeRateService
+                        rate = ExchangeRateService.get_rate(
+                            balance_info.currency,
+                            user_profile.base_currency,
+                            balance_info.balance_date
+                        )
+                        if rate and rate != Decimal('1.0'):
+                            snapshot.balance_base_currency = balance_info.balance * rate
+                            snapshot.base_currency = user_profile.base_currency
+                            snapshot.exchange_rate_used = rate
+                            snapshot.save()
+
+                    results['synced'].append({
+                        'id': account.id,
+                        'name': account.name,
+                        'balance': float(balance_info.balance),
+                        'currency': balance_info.currency,
+                    })
+
+                # Update account status
+                account.status = 'active'
+                account.last_sync_at = timezone.now()
+                account.last_sync_error = ''
+                account.pending_auth_state = None
+                account.save()
+
+                integration.close()
+
+            except Exception as e:
+                logger.exception("Sync failed for account %s", account.id)
+                account.status = 'error'
+                account.last_sync_error = str(e) or repr(e)
+                account.save()
+                results['errors'].append({
+                    'id': account.id,
+                    'name': account.name,
+                    'error': str(e) or repr(e),
+                })
+
+        return Response({
+            'status': 'success',
+            'synced_count': len(results['synced']),
+            'pending_2fa_count': len(results['pending_2fa']),
+            'error_count': len(results['errors']),
+            'skipped_count': len(results['skipped']),
+            'details': results,
+        })
+
+
 class AccountAuthView(APIView):
     """Handle 2FA authentication for an account."""
     permission_classes = [IsAuthenticated]
