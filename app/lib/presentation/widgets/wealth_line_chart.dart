@@ -250,17 +250,22 @@ class _WealthLineChartState extends ConsumerState<WealthLineChart> {
                   lineTouchData: LineTouchData(
                     handleBuiltInTouches: true,
                     touchCallback: (event, response) {
+                      // Tap clears the marked point
                       if (event is FlTapUpEvent) {
-                        final touchedIndex = response?.lineBarSpots?.firstOrNull?.x.toInt();
+                        if (_markedIndex != null) {
+                          setState(() {
+                            _markedIndex = null;
+                          });
+                        }
+                        return;
+                      }
+                      // Drag release marks the current point
+                      if (event is FlPanEndEvent || event is FlLongPressEnd) {
+                        final touchedIndex =
+                            response?.lineBarSpots?.firstOrNull?.x.toInt();
                         if (touchedIndex != null) {
                           setState(() {
-                            if (_markedIndex == touchedIndex) {
-                              // Unmark if tapping same point
-                              _markedIndex = null;
-                            } else {
-                              // Mark new point
-                              _markedIndex = touchedIndex;
-                            }
+                            _markedIndex = touchedIndex;
                           });
                         }
                       }
