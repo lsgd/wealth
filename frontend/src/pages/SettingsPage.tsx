@@ -6,6 +6,7 @@ import {
   updateUser,
   changePassword,
 } from '../api/client';
+import { useAuth } from '../contexts/AuthContext';
 
 interface UserData {
   id: number;
@@ -25,6 +26,7 @@ interface Profile {
 const CURRENCIES = ['EUR', 'USD', 'CHF', 'GBP'];
 
 export default function SettingsPage() {
+  const { refreshUser } = useAuth();
   const [, setProfile] = useState<Profile | null>(null);
   const [user, setUser] = useState<UserData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -103,6 +105,7 @@ export default function SettingsPage() {
         last_name: lastName,
         email,
       });
+      await refreshUser();
       setUserMessage('User details saved successfully');
     } catch (err: any) {
       setUserMessage(err.message || 'Failed to save');

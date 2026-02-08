@@ -34,6 +34,7 @@ interface AuthContextType {
     base_currency: string;
   }) => Promise<void>;
   logout: () => void;
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -77,9 +78,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   };
 
+  const refreshUser = async () => {
+    const u = await getCurrentUser();
+    setUser(u);
+  };
+
   return (
     <AuthContext.Provider
-      value={{ user, isAuthenticated: !!user, loading, login, register, logout }}
+      value={{ user, isAuthenticated: !!user, loading, login, register, logout, refreshUser }}
     >
       {children}
     </AuthContext.Provider>
