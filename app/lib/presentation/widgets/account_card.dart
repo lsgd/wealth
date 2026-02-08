@@ -90,11 +90,26 @@ class AccountCard extends ConsumerWidget {
                     ),
                   ),
                   // Balance
-                  Text(
-                    formatCurrency(balanceInBase, baseCurrency),
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w600,
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        formatCurrency(balance, account.currency),
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                      ),
+                      if (account.currency != baseCurrency)
+                        Text(
+                          formatCurrency(balanceInBase, baseCurrency),
+                          style:
+                              Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant,
+                                  ),
                         ),
+                    ],
                   ),
                   const SizedBox(width: 8),
                   // Sync button (only for auto-sync accounts)
