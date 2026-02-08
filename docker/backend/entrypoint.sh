@@ -30,6 +30,8 @@ python ${APP_PATH}/manage.py collectstatic --noinput
 # Set up cron jobs if crontabs file exists
 if test -f "/crontabs"; then
     echo "Setting up cron jobs..."
+    # Export environment variables for cron (cron doesn't inherit container env)
+    printenv | grep -E '^(DATABASE_URL|SECRET_KEY|ENCRYPTION_KEY|ADMIN_EMAIL|EMAIL_|DEFAULT_FROM_EMAIL|DEBUG|ALLOWED_HOSTS)' > /etc/cron.env
     service cron start
     cat /crontabs | crontab -u root -
 fi

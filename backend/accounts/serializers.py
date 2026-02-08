@@ -17,7 +17,8 @@ class UserProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserProfile
         fields = ['id', 'user', 'base_currency', 'auto_sync_enabled',
-                  'send_weekly_report', 'last_sync_at', 'created_at', 'updated_at']
+                  'send_weekly_report', 'default_chart_range', 'default_chart_granularity',
+                  'last_sync_at', 'created_at', 'updated_at']
         read_only_fields = ['id', 'last_sync_at', 'created_at', 'updated_at']
 
 

@@ -14,6 +14,20 @@ class UserProfile(models.Model):
         ('GBP', 'British Pound'),
     ]
 
+    CHART_RANGE_CHOICES = [
+        (30, '30 days'),
+        (90, '90 days'),
+        (180, '6 months'),
+        (365, '1 year'),
+        (730, '2 years'),
+        (3650, 'All'),
+    ]
+
+    CHART_GRANULARITY_CHOICES = [
+        ('daily', 'Daily'),
+        ('monthly', 'Monthly'),
+    ]
+
     user = models.OneToOneField(
         User,
         on_delete=models.CASCADE,
@@ -31,6 +45,18 @@ class UserProfile(models.Model):
     send_weekly_report = models.BooleanField(
         default=False,
         help_text='Send weekly wealth summary email on Mondays'
+    )
+    # Chart display preferences
+    default_chart_range = models.IntegerField(
+        choices=CHART_RANGE_CHOICES,
+        default=365,
+        help_text='Default time range for wealth chart'
+    )
+    default_chart_granularity = models.CharField(
+        max_length=10,
+        choices=CHART_GRANULARITY_CHOICES,
+        default='daily',
+        help_text='Default granularity for wealth chart'
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

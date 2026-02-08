@@ -17,10 +17,11 @@ interface ToastData {
 interface Account {
   id: number;
   name: string;
-  broker: { code: string; name: string };
+  broker: { code: string; name: string; supports_auto_sync?: boolean };
   account_type: string;
   currency: string;
   is_manual: boolean;
+  sync_enabled: boolean;
   status: string;
   last_sync_at: string | null;
   last_sync_error: string;
@@ -127,6 +128,7 @@ export default function AccountsTable({ accounts, baseCurrency, onRefresh }: Pro
   const [credentialsRetrySync, setCredentialsRetrySync] = useState(false);
   const [credentialsError, setCredentialsError] = useState('');
   const [settingsAccountName, setSettingsAccountName] = useState('');
+  const [settingsSyncEnabled, setSettingsSyncEnabled] = useState(true);
 
   // Toast notifications
   const [toasts, setToasts] = useState<ToastData[]>([]);
@@ -161,6 +163,7 @@ export default function AccountsTable({ accounts, baseCurrency, onRefresh }: Pro
     setCredentialsRetrySync(forRetry);
     setCredentialsError(errorMsg);
     setSettingsAccountName(account.name);
+    setSettingsSyncEnabled(account.sync_enabled);
 
     if (account.is_manual) {
       // Manual accounts don't have credentials
@@ -190,9 +193,16 @@ export default function AccountsTable({ accounts, baseCurrency, onRefresh }: Pro
     const accountId = credentialsAccount.id;
     const accountName = credentialsAccount.name;
     try {
-      // Save name if changed
+      // Save name and sync_enabled if changed
+      const updates: { name?: string; sync_enabled?: boolean } = {};
       if (settingsAccountName.trim() && settingsAccountName !== credentialsAccount.name) {
-        await updateAccount(accountId, { name: settingsAccountName.trim() });
+        updates.name = settingsAccountName.trim();
+      }
+      if (settingsSyncEnabled !== credentialsAccount.sync_enabled) {
+        updates.sync_enabled = settingsSyncEnabled;
+      }
+      if (Object.keys(updates).length > 0) {
+        await updateAccount(accountId, updates);
       }
       // Save credentials (only for non-manual accounts)
       if (!credentialsAccount.is_manual) {
@@ -337,34 +347,7 @@ export default function AccountsTable({ accounts, baseCurrency, onRefresh }: Pro
 
   return (
     <div className="card">
-      <div className="chart-header">
-        <h2>Accounts</h2>
-        <div className="header-buttons">
-          <button
-            className="btn btn-sm btn-ghost"
-            onClick={() => setShowImport(true)}
-            title="Import CSV"
-          >
-            <Upload size={14} />
-            Import
-          </button>
-          <button
-            className="btn btn-sm btn-ghost"
-            onClick={() => setShowExport(true)}
-            title="Export CSV"
-          >
-            <Download size={14} />
-            Export
-          </button>
-          <button
-            className="btn btn-sm btn-primary"
-            onClick={() => setShowAddAccount(true)}
-          >
-            <PlusCircle size={14} />
-            Add Account
-          </button>
-        </div>
-      </div>
+      <h2>Accounts</h2>
 
       {accounts.length === 0 ? (
         <p className="table-empty">No accounts yet. Click "Add Account" to get started.</p>
@@ -466,6 +449,32 @@ export default function AccountsTable({ accounts, baseCurrency, onRefresh }: Pro
           </table>
         </div>
       )}
+
+      <div className="table-actions">
+        <button
+          className="btn btn-sm btn-ghost"
+          onClick={() => setShowImport(true)}
+          title="Import CSV"
+        >
+          <Upload size={14} />
+          Import
+        </button>
+        <button
+          className="btn btn-sm btn-ghost"
+          onClick={() => setShowExport(true)}
+          title="Export CSV"
+        >
+          <Download size={14} />
+          Export
+        </button>
+        <button
+          className="btn btn-sm btn-primary"
+          onClick={() => setShowAddAccount(true)}
+        >
+          <PlusCircle size={14} />
+          Add Account
+        </button>
+      </div>
 
       {snapshotAccount && (
         <AddSnapshotModal
@@ -741,17 +750,32 @@ export default function AccountsTable({ accounts, baseCurrency, onRefresh }: Pro
                   </div>
                 ))}
 
+                {credentialsAccount.broker.supports_auto_sync && (
+                  <div className="form-group">
+                    <label className="toggle-label">
+                      <input
+                        type="checkbox"
+                        checked={settingsSyncEnabled}
+                        onChange={(e) => setSettingsSyncEnabled(e.target.checked)}
+                      />
+                      <span>Auto-sync enabled</span>
+                    </label>
+                    <small className="form-hint">
+                      When enabled, this account will be synced automatically during daily sync.
+                    </small>
+                  </div>
+                )}
+
                 <div className="form-actions">
                   <button
                     type="button"
-                    className="btn btn-ghost btn-danger"
+                    className="btn btn-ghost btn-danger btn-left"
                     onClick={() => {
                       setCredentialsAccount(null);
                       setCredentialsRetrySync(false);
                       setCredentialsError('');
                       setDeleteConfirm(credentialsAccount);
                     }}
-                    style={{ marginRight: 'auto' }}
                   >
                     <Trash2 size={14} style={{ marginRight: 6 }} />
                     Delete
@@ -816,14 +840,13 @@ export default function AccountsTable({ accounts, baseCurrency, onRefresh }: Pro
                 <div className="form-actions">
                   <button
                     type="button"
-                    className="btn btn-ghost btn-danger"
+                    className="btn btn-ghost btn-danger btn-left"
                     onClick={() => {
                       setCredentialsAccount(null);
                       setCredentialsRetrySync(false);
                       setCredentialsError('');
                       setDeleteConfirm(credentialsAccount);
                     }}
-                    style={{ marginRight: 'auto' }}
                   >
                     <Trash2 size={14} style={{ marginRight: 6 }} />
                     Delete Account

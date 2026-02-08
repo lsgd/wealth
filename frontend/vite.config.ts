@@ -8,7 +8,7 @@ export default defineConfig({
     port: 5000,
     proxy: {
       '/api': {
-        target: 'http://localhost:8084',
+        target: 'http://localhost:8085',
         changeOrigin: true,
         timeout: 360000, // 6 min — discover flow polls for app 2FA approval
       },

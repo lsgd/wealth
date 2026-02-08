@@ -4,6 +4,7 @@ import {
   getWealthHistory,
   getWealthBreakdown,
   getAccounts,
+  getProfile,
 } from '../api/client';
 import WealthSummaryCard from '../components/WealthSummaryCard';
 import WealthChart from '../components/WealthChart';
@@ -34,12 +35,27 @@ export default function DashboardPage() {
   const [breakdown, setBreakdown] = useState<Breakdown | null>(null);
   const [accounts, setAccounts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [defaultChartRange, setDefaultChartRange] = useState(365);
+  const [defaultChartGranularity, setDefaultChartGranularity] = useState<'daily' | 'monthly'>('daily');
 
   const fetchAll = useCallback(async () => {
+    // Try to fetch profile for chart preferences, but use defaults if it fails
+    let chartRange = 365;
+    let chartGranularity: 'daily' | 'monthly' = 'daily';
+    try {
+      const profile = await getProfile();
+      chartRange = profile.default_chart_range ?? 365;
+      chartGranularity = profile.default_chart_granularity ?? 'daily';
+      setDefaultChartRange(chartRange);
+      setDefaultChartGranularity(chartGranularity);
+    } catch {
+      // Use defaults if profile fetch fails
+    }
+
     try {
       const [s, h, b, a] = await Promise.all([
         getWealthSummary(),
-        getWealthHistory(365),
+        getWealthHistory(chartRange, chartGranularity),
         getWealthBreakdown('broker'),
         getAccounts(),
       ]);
@@ -94,6 +110,8 @@ export default function DashboardPage() {
         history={history?.history ?? []}
         baseCurrency={baseCurrency}
         onRangeChange={handleRangeChange}
+        defaultRange={defaultChartRange}
+        defaultGranularity={defaultChartGranularity}
       />
 
       <div className="dashboard-grid">

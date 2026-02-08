@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   LineChart,
   Line,
@@ -9,6 +9,20 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 
+function useIsMobile(breakpoint = 480) {
+  const [isMobile, setIsMobile] = useState(
+    typeof window !== 'undefined' ? window.innerWidth <= breakpoint : false
+  );
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth <= breakpoint);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [breakpoint]);
+
+  return isMobile;
+}
+
 interface HistoryPoint {
   date: string;
   total_wealth: number;
@@ -18,6 +32,8 @@ interface Props {
   history: HistoryPoint[];
   baseCurrency: string;
   onRangeChange: (days: number, granularity: 'daily' | 'monthly') => void;
+  defaultRange?: number;
+  defaultGranularity?: 'daily' | 'monthly';
 }
 
 const RANGES = [
@@ -48,9 +64,10 @@ function formatCurrencyCompact(value: number): string {
   return value.toString();
 }
 
-export default function WealthChart({ history, baseCurrency, onRangeChange }: Props) {
-  const [activeRange, setActiveRange] = useState(365);
-  const [granularity, setGranularity] = useState<'daily' | 'monthly'>('daily');
+export default function WealthChart({ history, baseCurrency, onRangeChange, defaultRange = 365, defaultGranularity = 'daily' }: Props) {
+  const [activeRange, setActiveRange] = useState(defaultRange);
+  const [granularity, setGranularity] = useState<'daily' | 'monthly'>(defaultGranularity);
+  const isMobile = useIsMobile();
 
   const handleRange = (days: number) => {
     setActiveRange(days);
@@ -69,6 +86,7 @@ export default function WealthChart({ history, baseCurrency, onRangeChange }: Pr
     }
     return `${dt.getDate()}.${dt.getMonth() + 1}`;
   };
+
 
   return (
     <div className="card chart-card">
@@ -107,22 +125,24 @@ export default function WealthChart({ history, baseCurrency, onRangeChange }: Pr
           <p>No data yet. Add accounts and snapshots to see your wealth over time.</p>
         </div>
       ) : (
-        <ResponsiveContainer width="100%" height={350}>
-          <LineChart data={history} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+        <ResponsiveContainer width="100%" height={isMobile ? 280 : 350}>
+          <LineChart data={history} margin={{ top: 5, right: 28, left: 0, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
             <XAxis
               dataKey="date"
-              tick={{ fill: 'var(--color-text-muted)', fontSize: 11 }}
+              tick={{ fill: 'var(--color-text-muted)', fontSize: isMobile ? 9 : 11 }}
               tickFormatter={formatDate}
-              interval={Math.max(0, Math.floor(history.length / 6) - 1)}
-              angle={-45}
-              textAnchor="end"
-              height={50}
+              interval={Math.max(0, Math.floor(history.length / (isMobile ? 4 : 6)) - 1)}
+              angle={isMobile ? -45 : 0}
+              textAnchor={isMobile ? 'end' : 'middle'}
+              height={isMobile ? 45 : 30}
+              dy={isMobile ? 5 : 0}
+              padding={{ left: 0, right: 0 }}
             />
             <YAxis
-              tick={{ fill: 'var(--color-text-muted)', fontSize: 11 }}
+              tick={{ fill: 'var(--color-text-muted)', fontSize: isMobile ? 9 : 11 }}
               tickFormatter={formatCurrencyCompact}
-              width={45}
+              width={isMobile ? 32 : 45}
             />
             <Tooltip
               contentStyle={{

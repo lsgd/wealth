@@ -31,6 +31,11 @@ body {
   color: var(--color-text);
   line-height: 1.6;
   min-height: 100vh;
+  min-height: 100dvh; /* Dynamic viewport height for mobile */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* Prevent pull-to-refresh on iOS */
+  overscroll-behavior-y: none;
 }
 
 a {
@@ -44,6 +49,7 @@ a:hover {
 /* Layout */
 .app-layout {
   min-height: 100vh;
+  min-height: 100dvh; /* Dynamic viewport height for mobile */
   display: flex;
   flex-direction: column;
 }
@@ -330,6 +336,13 @@ a:hover {
   justify-content: flex-end;
 }
 
+.table-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 24px;
+}
+
 .account-name-link {
   background: none;
   border: none;
@@ -490,6 +503,22 @@ a:hover {
   border-color: var(--color-primary);
 }
 
+.toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  font-weight: normal;
+  color: var(--color-text);
+}
+
+.toggle-label input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--color-primary);
+  cursor: pointer;
+}
+
 .form-error {
   background: rgba(248, 113, 113, 0.1);
   border: 1px solid rgba(248, 113, 113, 0.3);
@@ -505,6 +534,11 @@ a:hover {
   gap: 8px;
   justify-content: flex-end;
   margin-top: 20px;
+  flex-wrap: wrap;
+}
+
+.form-actions .btn-left {
+  margin-right: auto;
 }
 
 /* Modal */
@@ -1285,7 +1319,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 /* Mobile phones */
 @media (max-width: 480px) {
   html {
-    font-size: 13px;
+    font-size: 14px;
   }
 
   :root {
@@ -1294,23 +1328,34 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 
   .app-header {
     padding: 0 12px;
+    padding-left: max(12px, env(safe-area-inset-left));
+    padding-right: max(12px, env(safe-area-inset-right));
   }
 
   .app-logo {
     font-size: 1rem;
   }
 
-  .header-user {
+  .app-logo span {
     display: none;
+  }
+
+  .header-user {
+    font-size: 0.85rem;
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .app-main {
     padding: 12px;
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
   }
 
   .card {
-    padding: 14px;
-    border-radius: 8px;
+    padding: 16px;
+    border-radius: 12px;
   }
 
   .dashboard {
@@ -1332,12 +1377,12 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   }
 
   .summary-value {
-    font-size: 1.4rem;
+    font-size: 1.5rem;
   }
 
   .summary-label,
   .summary-meta {
-    font-size: 0.75rem;
+    font-size: 0.8rem;
   }
 
   /* Chart header */
@@ -1355,26 +1400,35 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     width: 100%;
   }
 
-  /* Button sizing */
+  /* Button sizing - ensure 44px touch targets */
   .btn {
-    padding: 6px 12px;
-    font-size: 0.85rem;
+    padding: 10px 16px;
+    font-size: 0.9rem;
+    min-height: 44px;
   }
 
   .btn-sm {
-    padding: 4px 8px;
-    font-size: 0.75rem;
+    padding: 8px 12px;
+    font-size: 0.8rem;
+    min-height: 40px;
+  }
+
+  .range-buttons,
+  .granularity-buttons {
+    flex-wrap: wrap;
+    justify-content: center;
   }
 
   .range-buttons .btn,
   .granularity-buttons .btn {
-    padding: 4px 8px;
-    font-size: 0.75rem;
+    padding: 8px 12px;
+    font-size: 0.8rem;
+    min-height: 36px;
   }
 
   /* Accounts table - hide more columns */
   .data-table {
-    font-size: 0.8rem;
+    font-size: 0.85rem;
   }
 
   .data-table th:nth-child(4),
@@ -1386,19 +1440,27 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 
   .data-table th,
   .data-table td {
-    padding: 6px;
+    padding: 10px 8px;
   }
 
   .action-buttons {
-    gap: 2px;
+    gap: 4px;
   }
 
   .action-buttons .btn {
-    padding: 4px 6px;
+    padding: 8px;
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .table-actions {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
   }
 
   .mono {
-    font-size: 0.75rem;
+    font-size: 0.8rem;
   }
 
   /* Edit name input */
@@ -1409,29 +1471,81 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   /* Modal full screen on mobile */
   .modal-overlay {
     align-items: flex-end;
+    padding: 0;
   }
 
   .modal {
     margin: 0;
-    border-radius: 16px 16px 0 0;
+    border-radius: 20px 20px 0 0;
     max-width: 100vw;
-    max-height: 90vh;
+    width: 100%;
+    max-height: 92vh;
     overflow-y: auto;
+    padding: 20px;
+    padding-bottom: max(20px, env(safe-area-inset-bottom));
+  }
+
+  .modal-header {
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--color-border);
   }
 
   .modal-header h3 {
-    font-size: 1rem;
+    font-size: 1.1rem;
+    display: flex;
+    align-items: center;
+  }
+
+  .modal-header .btn {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 10px;
+  }
+
+  /* Modal form actions */
+  .modal .form-actions {
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 1px solid var(--color-border);
+  }
+
+  .modal .form-actions .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* On mobile, put dangerous actions at the bottom */
+  .modal .form-actions .btn-left,
+  .modal .form-actions .btn-danger {
+    order: 10;
+    margin-right: 0;
+    margin-top: 8px;
+  }
+
+  /* Primary action first, cancel second */
+  .modal .form-actions .btn-primary {
+    order: 1;
+  }
+
+  .modal .form-actions .btn-ghost:not(.btn-danger):not(.btn-left) {
+    order: 2;
   }
 
   /* Snapshots form */
   .snapshot-add-row {
     flex-direction: column;
     align-items: stretch;
+    gap: 12px;
   }
 
   .snapshot-input,
   .snapshot-select {
     width: 100%;
+    min-height: 44px;
+    font-size: 16px;
   }
 
   .snapshot-input[type="date"] {
@@ -1449,78 +1563,127 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   }
 
   .recent-change-percent {
-    font-size: 1.1rem;
+    font-size: 1.2rem;
   }
 
   .recent-change-absolute {
-    font-size: 0.75rem;
+    font-size: 0.8rem;
   }
 
   /* Breakdown - stack vertically on mobile */
   .breakdown-content {
     flex-direction: column;
-    font-size: 0.85rem;
+    font-size: 0.9rem;
   }
 
   .breakdown-chart {
     width: 100%;
   }
 
+  .breakdown-legend {
+    max-height: none;
+  }
+
   .breakdown-legend-item {
-    padding: 4px 6px;
-    gap: 8px;
+    padding: 10px 8px;
+    gap: 10px;
+    min-height: 44px;
   }
 
   .breakdown-legend-value {
-    min-width: 70px;
+    min-width: 80px;
   }
 
   .breakdown-legend-pct {
-    width: 40px;
+    width: 45px;
   }
 
   /* Toast on mobile */
   .toast-container {
-    top: calc(var(--header-height) + 8px);
-    left: 8px;
-    right: 8px;
+    top: auto;
+    bottom: max(16px, env(safe-area-inset-bottom));
+    left: 12px;
+    right: 12px;
   }
 
   .toast {
-    padding: 10px 12px;
+    padding: 14px 16px;
   }
 
   .toast-message {
-    font-size: 0.85rem;
+    font-size: 0.9rem;
+  }
+
+  .toast-dismiss {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 10px;
   }
 
   /* Form on mobile */
+  .form-group {
+    margin-bottom: 20px;
+  }
+
   .form-group label {
-    font-size: 0.8rem;
+    font-size: 0.85rem;
+    margin-bottom: 8px;
   }
 
   .form-group input,
   .form-group select {
     font-size: 16px; /* Prevents iOS zoom on focus */
+    padding: 14px 16px;
+    min-height: 50px;
   }
 
   /* Login/Register pages */
-  .auth-container {
-    padding: 16px;
+  .auth-page {
+    align-items: flex-start;
+    padding-top: 40px;
   }
 
   .auth-card {
-    padding: 20px;
+    padding: 24px;
+    margin: 12px;
+    border-radius: 16px;
   }
 
   .auth-card h1 {
-    font-size: 1.3rem;
+    font-size: 1.4rem;
   }
 
   /* Allocation chart */
   .allocation-legend-item {
-    padding: 3px 6px;
-    gap: 8px;
+    padding: 8px;
+    gap: 10px;
+    min-height: 44px;
+  }
+
+  /* Discover items - larger touch targets */
+  .discover-item {
+    padding: 16px;
+    min-height: 60px;
+  }
+
+  .discover-item input[type="checkbox"] {
+    width: 22px;
+    height: 22px;
+  }
+
+  /* Error details scrollable */
+  .error-details {
+    max-height: 150px;
+  }
+
+  /* Header buttons */
+  .header-buttons {
+    gap: 4px;
+  }
+
+  .header-buttons .btn {
+    min-width: 44px;
+    min-height: 44px;
   }
 }
 
@@ -1558,10 +1721,47 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     background: transparent;
   }
 
-  /* Larger touch targets */
+  /* iOS minimum 44px touch targets */
   .action-buttons .btn {
-    min-width: 36px;
-    min-height: 36px;
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .btn-ghost {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  /* Better tap feedback */
+  .btn {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+
+  /* Prevent accidental double-tap zoom */
+  * {
+    touch-action: manipulation;
+  }
+
+  /* Legend items as touch targets */
+  .breakdown-legend-item {
+    min-height: 44px;
+  }
+
+  /* Account name link touch target */
+  .account-name-link {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+  }
+
+  /* Status button touch target */
+  .btn-status-error {
+    min-width: 44px;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 }
 
@@ -1637,6 +1837,20 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   height: 18px;
   accent-color: var(--color-primary);
   cursor: pointer;
+}
+
+.button-group-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.button-group {
+  display: flex;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 8px;
+  padding: 4px;
 }
 
 .form-message {

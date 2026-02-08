@@ -47,12 +47,14 @@ class Command(BaseCommand):
         # Get all non-manual accounts with auto_sync enabled
         # Only include brokers that support auto sync (decoupled TAN or no 2FA)
         # Excludes brokers requiring interactive 2FA (e.g., photoTAN)
+        # Respects both global (user profile) and per-account sync_enabled settings
         accounts = FinancialAccount.objects.filter(
             is_manual=False,
+            sync_enabled=True,
             user__profile__auto_sync_enabled=True,
             broker__supports_auto_sync=True,
         ).exclude(
-            encrypted_credentials=''
+            encrypted_credentials=b''
         ).exclude(
             encrypted_credentials__isnull=True
         ).select_related('user', 'broker')

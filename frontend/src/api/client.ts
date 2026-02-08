@@ -283,7 +283,7 @@ export async function deleteSnapshot(snapshotId: number) {
   }
 }
 
-export async function updateAccount(accountId: number, fields: { name?: string }) {
+export async function updateAccount(accountId: number, fields: { name?: string; sync_enabled?: boolean }) {
   const res = await fetchWithAuth(`/api/accounts/${accountId}/`, {
     method: 'PATCH',
     body: JSON.stringify(fields),
@@ -367,6 +367,8 @@ export async function updateProfile(fields: {
   base_currency?: string;
   auto_sync_enabled?: boolean;
   send_weekly_report?: boolean;
+  default_chart_range?: number;
+  default_chart_granularity?: 'daily' | 'monthly';
 }) {
   const res = await fetchWithAuth('/api/profile/', {
     method: 'PATCH',

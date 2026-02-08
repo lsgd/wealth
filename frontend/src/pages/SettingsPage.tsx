@@ -21,9 +21,20 @@ interface Profile {
   base_currency: string;
   auto_sync_enabled: boolean;
   send_weekly_report: boolean;
+  default_chart_range: number;
+  default_chart_granularity: 'daily' | 'monthly';
 }
 
 const CURRENCIES = ['EUR', 'USD', 'CHF', 'GBP'];
+
+const CHART_RANGES = [
+  { value: 30, label: '30d' },
+  { value: 90, label: '90d' },
+  { value: 180, label: '6m' },
+  { value: 365, label: '1y' },
+  { value: 730, label: '2y' },
+  { value: 3650, label: 'All' },
+];
 
 export default function SettingsPage() {
   const { refreshUser } = useAuth();
@@ -35,6 +46,8 @@ export default function SettingsPage() {
   const [baseCurrency, setBaseCurrency] = useState('EUR');
   const [autoSyncEnabled, setAutoSyncEnabled] = useState(true);
   const [sendWeeklyReport, setSendWeeklyReport] = useState(false);
+  const [defaultChartRange, setDefaultChartRange] = useState(365);
+  const [defaultChartGranularity, setDefaultChartGranularity] = useState<'daily' | 'monthly'>('daily');
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileMessage, setProfileMessage] = useState('');
 
@@ -66,6 +79,8 @@ export default function SettingsPage() {
       setBaseCurrency(profileData.base_currency);
       setAutoSyncEnabled(profileData.auto_sync_enabled);
       setSendWeeklyReport(profileData.send_weekly_report);
+      setDefaultChartRange(profileData.default_chart_range);
+      setDefaultChartGranularity(profileData.default_chart_granularity);
 
       setFirstName(profileData.user.first_name || '');
       setLastName(profileData.user.last_name || '');
@@ -86,6 +101,8 @@ export default function SettingsPage() {
         base_currency: baseCurrency,
         auto_sync_enabled: autoSyncEnabled,
         send_weekly_report: sendWeeklyReport,
+        default_chart_range: defaultChartRange,
+        default_chart_granularity: defaultChartGranularity,
       });
       setProfileMessage('Preferences saved');
     } catch (err: any) {
@@ -238,6 +255,39 @@ export default function SettingsPage() {
                 />
                 Send weekly wealth report (Mondays)
               </label>
+            </div>
+            <div className="form-group">
+              <label>Default Chart View</label>
+              <div className="button-group-row">
+                <div className="button-group">
+                  {CHART_RANGES.map((r) => (
+                    <button
+                      key={r.value}
+                      type="button"
+                      className={`btn btn-sm ${defaultChartRange === r.value ? 'btn-primary' : 'btn-ghost'}`}
+                      onClick={() => setDefaultChartRange(r.value)}
+                    >
+                      {r.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="button-group">
+                  <button
+                    type="button"
+                    className={`btn btn-sm ${defaultChartGranularity === 'daily' ? 'btn-primary' : 'btn-ghost'}`}
+                    onClick={() => setDefaultChartGranularity('daily')}
+                  >
+                    Daily
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn btn-sm ${defaultChartGranularity === 'monthly' ? 'btn-primary' : 'btn-ghost'}`}
+                    onClick={() => setDefaultChartGranularity('monthly')}
+                  >
+                    Monthly
+                  </button>
+                </div>
+              </div>
             </div>
             <div className="form-actions">
               {profileMessage && <span className="form-message success">{profileMessage}</span>}
