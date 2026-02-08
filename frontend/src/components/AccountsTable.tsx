@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { RefreshCw, Plus, PlusCircle, AlertCircle, CheckCircle2, Clock, X, Key, Trash2, History, Pencil, Check, XCircle, MinusCircle, Settings, Upload, Download } from 'lucide-react';
+import { RefreshCw, Plus, PlusCircle, AlertCircle, CheckCircle2, Clock, X, Key, Trash2, History, MinusCircle, Settings, Upload, Download } from 'lucide-react';
 import { syncAccount, completeAccountAuth, deleteAccount, updateAccount, updateAccountCredentials, getAccountCredentials, getBroker } from '../api/client';
 import AddSnapshotModal from './AddSnapshotModal';
 import AddAccountModal from './AddAccountModal';
@@ -115,21 +115,18 @@ export default function AccountsTable({ accounts, baseCurrency, onRefresh }: Pro
   const [authError, setAuthError] = useState('');
   const [submittingAuth, setSubmittingAuth] = useState(false);
 
-  // Edit account name state
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [editName, setEditName] = useState('');
-  const [savingName, setSavingName] = useState(false);
 
   // Error details modal
   const [errorAccount, setErrorAccount] = useState<Account | null>(null);
 
-  // Credentials editing modal
+  // Account settings modal
   const [credentialsAccount, setCredentialsAccount] = useState<Account | null>(null);
   const [credentialSchema, setCredentialSchema] = useState<Record<string, any> | null>(null);
   const [credentialValues, setCredentialValues] = useState<Record<string, string>>({});
   const [savingCredentials, setSavingCredentials] = useState(false);
   const [credentialsRetrySync, setCredentialsRetrySync] = useState(false);
   const [credentialsError, setCredentialsError] = useState('');
+  const [settingsAccountName, setSettingsAccountName] = useState('');
 
   // Toast notifications
   const [toasts, setToasts] = useState<ToastData[]>([]);
@@ -147,7 +144,6 @@ export default function AccountsTable({ accounts, baseCurrency, onRefresh }: Pro
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (editingId) setEditingId(null);
         if (authPrompt) setAuthPrompt(null);
         if (deleteConfirm) setDeleteConfirm(null);
         if (errorAccount) setErrorAccount(null);
@@ -156,32 +152,7 @@ export default function AccountsTable({ accounts, baseCurrency, onRefresh }: Pro
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [authPrompt, deleteConfirm, editingId, errorAccount, credentialsAccount]);
-
-  const startEditName = (account: Account) => {
-    setEditingId(account.id);
-    setEditName(account.name);
-  };
-
-  const cancelEditName = () => {
-    setEditingId(null);
-    setEditName('');
-  };
-
-  const handleSaveName = async (accountId: number) => {
-    if (!editName.trim()) return;
-    setSavingName(true);
-    try {
-      await updateAccount(accountId, { name: editName.trim() });
-      setEditingId(null);
-      setEditName('');
-      onRefresh();
-    } catch {
-      // Error handling could be added here
-    } finally {
-      setSavingName(false);
-    }
-  };
+  }, [authPrompt, deleteConfirm, errorAccount, credentialsAccount]);
 
   const openCredentialsModal = async (account: Account, forRetry = false, errorMsg = '') => {
     setCredentialsAccount(account);
@@ -189,6 +160,13 @@ export default function AccountsTable({ accounts, baseCurrency, onRefresh }: Pro
     setCredentialSchema(null);
     setCredentialsRetrySync(forRetry);
     setCredentialsError(errorMsg);
+    setSettingsAccountName(account.name);
+
+    if (account.is_manual) {
+      // Manual accounts don't have credentials
+      return;
+    }
+
     try {
       // Fetch broker schema and current credentials in parallel
       const [broker, credData] = await Promise.all([
@@ -212,7 +190,14 @@ export default function AccountsTable({ accounts, baseCurrency, onRefresh }: Pro
     const accountId = credentialsAccount.id;
     const accountName = credentialsAccount.name;
     try {
-      await updateAccountCredentials(accountId, credentialValues);
+      // Save name if changed
+      if (settingsAccountName.trim() && settingsAccountName !== credentialsAccount.name) {
+        await updateAccount(accountId, { name: settingsAccountName.trim() });
+      }
+      // Save credentials (only for non-manual accounts)
+      if (!credentialsAccount.is_manual) {
+        await updateAccountCredentials(accountId, credentialValues);
+      }
 
       if (andRetrySync) {
         // Close modal and retry sync
@@ -404,57 +389,16 @@ export default function AccountsTable({ accounts, baseCurrency, onRefresh }: Pro
                 const baseBal = snap?.balance_base_currency
                   ? parseFloat(snap.balance_base_currency)
                   : balance;
-                const isEditing = editingId === a.id;
                 return (
                   <tr key={a.id}>
                     <td>
-                      {isEditing ? (
-                        <div className="edit-name-row">
-                          <input
-                            type="text"
-                            value={editName}
-                            onChange={(e) => setEditName(e.target.value)}
-                            className="edit-name-input"
-                            autoFocus
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') handleSaveName(a.id);
-                              if (e.key === 'Escape') cancelEditName();
-                            }}
-                          />
-                          <button
-                            className="btn btn-sm btn-ghost"
-                            onClick={() => handleSaveName(a.id)}
-                            disabled={savingName}
-                            title="Save"
-                          >
-                            <Check size={14} />
-                          </button>
-                          <button
-                            className="btn btn-sm btn-ghost"
-                            onClick={cancelEditName}
-                            title="Cancel"
-                          >
-                            <XCircle size={14} />
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="name-cell">
-                          <button
-                            className="account-name-link"
-                            onClick={() => setSnapshotsAccount(a)}
-                            title="View snapshots"
-                          >
-                            {a.name}
-                          </button>
-                          <button
-                            className="btn btn-sm btn-ghost btn-edit-name"
-                            onClick={() => startEditName(a)}
-                            title="Edit name"
-                          >
-                            <Pencil size={12} />
-                          </button>
-                        </div>
-                      )}
+                      <button
+                        className="account-name-link"
+                        onClick={() => setSnapshotsAccount(a)}
+                        title="View snapshots"
+                      >
+                        {a.name}
+                      </button>
                     </td>
                     <td>{a.broker.name}</td>
                     <td className="text-right mono">
@@ -764,16 +708,23 @@ export default function AccountsTable({ accounts, baseCurrency, onRefresh }: Pro
               </div>
             )}
 
-            <p className="form-hint" style={{ marginBottom: 16 }}>
-              {credentialsRetrySync ? (
-                <>Update credentials for <strong>{credentialsAccount.name}</strong> and retry sync.</>
-              ) : (
-                <>Settings for <strong>{credentialsAccount.name}</strong></>
-              )}
-            </p>
+            {credentialsRetrySync && (
+              <p className="form-hint" style={{ marginBottom: 16 }}>
+                Update credentials for <strong>{credentialsAccount.name}</strong> and retry sync.
+              </p>
+            )}
 
             {!credentialsAccount.is_manual && credentialSchema?.properties ? (
               <form onSubmit={(e) => { e.preventDefault(); handleSaveCredentials(credentialsRetrySync); }}>
+                <div className="form-group">
+                  <label htmlFor="settings-name">Account Name</label>
+                  <input
+                    id="settings-name"
+                    type="text"
+                    value={settingsAccountName}
+                    onChange={(e) => setSettingsAccountName(e.target.value)}
+                  />
+                </div>
                 {Object.entries(credentialSchema.properties).map(([key, field]: [string, any]) => (
                   <div className="form-group" key={key}>
                     <label htmlFor={`cred-${key}`}>{field.title || key}</label>
@@ -852,29 +803,47 @@ export default function AccountsTable({ accounts, baseCurrency, onRefresh }: Pro
                 </div>
               </form>
             ) : credentialsAccount.is_manual ? (
-              <div className="form-actions">
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-danger"
-                  onClick={() => {
-                    setCredentialsAccount(null);
-                    setCredentialsRetrySync(false);
-                    setCredentialsError('');
-                    setDeleteConfirm(credentialsAccount);
-                  }}
-                  style={{ marginRight: 'auto' }}
-                >
-                  <Trash2 size={14} style={{ marginRight: 6 }} />
-                  Delete Account
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-ghost"
-                  onClick={() => { setCredentialsAccount(null); setCredentialsRetrySync(false); setCredentialsError(''); }}
-                >
-                  Close
-                </button>
-              </div>
+              <form onSubmit={(e) => { e.preventDefault(); handleSaveCredentials(false); }}>
+                <div className="form-group">
+                  <label htmlFor="settings-name-manual">Account Name</label>
+                  <input
+                    id="settings-name-manual"
+                    type="text"
+                    value={settingsAccountName}
+                    onChange={(e) => setSettingsAccountName(e.target.value)}
+                  />
+                </div>
+                <div className="form-actions">
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-danger"
+                    onClick={() => {
+                      setCredentialsAccount(null);
+                      setCredentialsRetrySync(false);
+                      setCredentialsError('');
+                      setDeleteConfirm(credentialsAccount);
+                    }}
+                    style={{ marginRight: 'auto' }}
+                  >
+                    <Trash2 size={14} style={{ marginRight: 6 }} />
+                    Delete Account
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    onClick={() => { setCredentialsAccount(null); setCredentialsRetrySync(false); setCredentialsError(''); }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn btn-primary"
+                    disabled={savingCredentials}
+                  >
+                    {savingCredentials ? 'Saving...' : 'Save'}
+                  </button>
+                </div>
+              </form>
             ) : (
               <p className="text-muted">Loading credential fields...</p>
             )}

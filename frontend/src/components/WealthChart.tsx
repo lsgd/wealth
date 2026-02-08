@@ -38,6 +38,16 @@ function formatCurrency(value: number, currency: string): string {
   }).format(value);
 }
 
+function formatCurrencyCompact(value: number): string {
+  if (value >= 1_000_000) {
+    return `${(value / 1_000_000).toFixed(1)}M`;
+  }
+  if (value >= 1_000) {
+    return `${Math.round(value / 1_000)}k`;
+  }
+  return value.toString();
+}
+
 export default function WealthChart({ history, baseCurrency, onRangeChange }: Props) {
   const [activeRange, setActiveRange] = useState(365);
   const [granularity, setGranularity] = useState<'daily' | 'monthly'>('daily');
@@ -98,18 +108,21 @@ export default function WealthChart({ history, baseCurrency, onRangeChange }: Pr
         </div>
       ) : (
         <ResponsiveContainer width="100%" height={350}>
-          <LineChart data={history} margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
+          <LineChart data={history} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
             <XAxis
               dataKey="date"
-              tick={{ fill: 'var(--color-text-muted)', fontSize: 12 }}
+              tick={{ fill: 'var(--color-text-muted)', fontSize: 11 }}
               tickFormatter={formatDate}
-              interval={Math.max(0, Math.floor(history.length / 10) - 1)}
+              interval={Math.max(0, Math.floor(history.length / 6) - 1)}
+              angle={-45}
+              textAnchor="end"
+              height={50}
             />
             <YAxis
-              tick={{ fill: 'var(--color-text-muted)', fontSize: 12 }}
-              tickFormatter={(v: number) => formatCurrency(v, baseCurrency)}
-              width={100}
+              tick={{ fill: 'var(--color-text-muted)', fontSize: 11 }}
+              tickFormatter={formatCurrencyCompact}
+              width={45}
             />
             <Tooltip
               contentStyle={{
