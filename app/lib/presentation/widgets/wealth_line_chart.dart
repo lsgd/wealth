@@ -82,9 +82,10 @@ class _WealthLineChartState extends ConsumerState<WealthLineChart> {
 
     final gridInterval = stepSize;
 
-    // Get the marked point for display
-    final markedPoint =
-        _markedIndex != null ? widget.history[_markedIndex!] : null;
+    // Get the point to display (current touch or marked)
+    final displayIndex = _lastTouchedIndex ?? _markedIndex;
+    final displayPoint =
+        displayIndex != null ? widget.history[displayIndex] : null;
 
     return Card(
       child: Padding(
@@ -158,15 +159,15 @@ class _WealthLineChartState extends ConsumerState<WealthLineChart> {
             Container(
               height: 40,
               alignment: Alignment.center,
-              child: markedPoint != null
+              child: displayPoint != null
                   ? Text(
-                      '${formatDate(markedPoint.dateTime, dateFormat)}  •  ${formatCurrency(markedPoint.totalWealth, widget.currency)}',
+                      '${formatDate(displayPoint.dateTime, dateFormat)}  •  ${formatCurrency(displayPoint.totalWealth, widget.currency)}',
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.w600,
                           ),
                     )
                   : Text(
-                      'Tap chart to select a point',
+                      'Slide on chart to see values',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                             color:
                                 Theme.of(context).colorScheme.onSurfaceVariant,
@@ -267,8 +268,8 @@ class _WealthLineChartState extends ConsumerState<WealthLineChart> {
                       dotData: FlDotData(
                         show: true,
                         checkToShowDot: (spot, barData) {
-                          // Show dot only for marked point
-                          return spot.x.toInt() == _markedIndex;
+                          // Show dot for current touch or marked point
+                          return spot.x.toInt() == displayIndex;
                         },
                         getDotPainter: (spot, percent, barData, index) {
                           return FlDotCirclePainter(
@@ -291,16 +292,12 @@ class _WealthLineChartState extends ConsumerState<WealthLineChart> {
                   lineTouchData: LineTouchData(
                     handleBuiltInTouches: true,
                     touchCallback: (event, response) {
-                      // Track current touch position
                       final touchedIndex =
                           response?.lineBarSpots?.firstOrNull?.x.toInt();
-                      if (touchedIndex != null) {
-                        _lastTouchedIndex = touchedIndex;
-                      }
 
                       // Tap clears the marked point
                       if (event is FlTapUpEvent) {
-                        if (_markedIndex != null) {
+                        if (_markedIndex != null || _lastTouchedIndex != null) {
                           setState(() {
                             _markedIndex = null;
                             _lastTouchedIndex = null;
@@ -319,6 +316,15 @@ class _WealthLineChartState extends ConsumerState<WealthLineChart> {
                             _lastTouchedIndex = null;
                           });
                         }
+                        return;
+                      }
+
+                      // Update display in real-time while sliding
+                      if (touchedIndex != null &&
+                          touchedIndex != _lastTouchedIndex) {
+                        setState(() {
+                          _lastTouchedIndex = touchedIndex;
+                        });
                       }
                     },
                     // Disable tooltip overlay - info shown above chart
@@ -350,8 +356,8 @@ class _WealthLineChartState extends ConsumerState<WealthLineChart> {
                   ),
                   // No tooltip indicators - info shown above chart
                   showingTooltipIndicators: [],
-                  // Vertical line for marked point
-                  extraLinesData: _markedIndex != null
+                  // Vertical line for marked point (when not actively touching)
+                  extraLinesData: _markedIndex != null && _lastTouchedIndex == null
                       ? ExtraLinesData(
                           verticalLines: [
                             VerticalLine(
