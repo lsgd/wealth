@@ -492,11 +492,22 @@ class AccountCredentialsView(APIView):
 class AccountSnapshotListCreateView(generics.ListCreateAPIView):
     """List snapshots for an account or create a manual one."""
     permission_classes = [IsAuthenticated]
+    serializer_class = AccountSnapshotSerializer
 
     def get_serializer_class(self):
         if self.request.method == 'POST':
             return AccountSnapshotCreateSerializer
         return AccountSnapshotSerializer
+
+    def create(self, request, *args, **kwargs):
+        """Override to return full snapshot data after creation."""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        # Return full snapshot using read serializer
+        snapshot = serializer.instance
+        response_serializer = AccountSnapshotSerializer(snapshot)
+        return Response(response_serializer.data, status=status.HTTP_201_CREATED)
 
     def get_queryset(self):
         account_id = self.kwargs['account_id']

@@ -129,7 +129,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                 child: authState.whenOrNull(
                   data: (user) => Text(
-                    'Hello, ${user?.firstName ?? user?.username ?? 'there'}!',
+                    'Hello, ${user?.firstName?.isNotEmpty == true ? user!.firstName : (user?.username ?? 'there')}!',
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
                 ),

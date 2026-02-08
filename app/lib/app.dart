@@ -12,8 +12,6 @@ import 'presentation/screens/splash_screen.dart';
 import 'presentation/theme/app_theme.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
-  final authState = ref.watch(authStateProvider);
-
   return GoRouter(
     initialLocation: '/splash',
     redirect: (context, state) {
@@ -24,6 +22,9 @@ final routerProvider = Provider<GoRouter>((ref) {
 
       // Allow server config without auth
       if (location == '/server-config') return null;
+
+      // Read auth state without watching to avoid router rebuild loops
+      final authState = ref.read(authStateProvider);
 
       return authState.when(
         data: (auth) {

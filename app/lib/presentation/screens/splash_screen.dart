@@ -44,32 +44,22 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
     // Check if biometric is enabled
     final biometricEnabled = await storage.isBiometricEnabled();
     if (biometricEnabled) {
-      // Try biometric unlock
+      // Try biometric unlock - if enabled, biometric is REQUIRED
       final success =
           await ref.read(authStateProvider.notifier).unlockWithBiometrics();
       if (success) {
         if (mounted) context.go('/dashboard');
-        return;
+      } else {
+        // Biometric failed/cancelled - clear auth state to prevent router redirect
+        ref.read(authStateProvider.notifier).clearAuthState();
+        if (mounted) context.go('/login');
       }
+      return;
     }
 
-    // Fall back to checking if token is still valid
-    final authState = ref.read(authStateProvider);
-    authState.when(
-      data: (user) {
-        if (user != null) {
-          context.go('/dashboard');
-        } else {
-          context.go('/login');
-        }
-      },
-      loading: () {
-        // Wait for auth to complete
-      },
-      error: (_, _) {
-        context.go('/login');
-      },
-    );
+    // No biometric enabled - always require password login
+    ref.read(authStateProvider.notifier).clearAuthState();
+    if (mounted) context.go('/login');
   }
 
   @override

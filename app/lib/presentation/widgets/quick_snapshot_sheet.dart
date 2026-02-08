@@ -20,15 +20,19 @@ class QuickSnapshotSheet extends ConsumerStatefulWidget {
   ConsumerState<QuickSnapshotSheet> createState() => _QuickSnapshotSheetState();
 }
 
-class _QuickSnapshotSheetState extends ConsumerState<QuickSnapshotSheet> {
+class _QuickSnapshotSheetState extends ConsumerState<QuickSnapshotSheet>
+    with SingleTickerProviderStateMixin {
   final Map<int, TextEditingController> _controllers = {};
   final Set<int> _submitting = {};
   final Set<int> _completed = {};
   final Map<int, String> _errors = {};
+  final GlobalKey<AnimatedListState> _listKey = GlobalKey<AnimatedListState>();
+  late List<Account> _visibleAccounts;
 
   @override
   void initState() {
     super.initState();
+    _visibleAccounts = List.from(widget.accounts);
     for (final account in widget.accounts) {
       // Empty field - user must enter the balance
       _controllers[account.id] = TextEditingController();
@@ -41,6 +45,78 @@ class _QuickSnapshotSheetState extends ConsumerState<QuickSnapshotSheet> {
       controller.dispose();
     }
     super.dispose();
+  }
+
+  Widget _buildAccountCard(
+    Account account,
+    Animation<double> animation, {
+    bool isRemoving = false,
+  }) {
+    final isSubmitting = _submitting.contains(account.id);
+    final error = _errors[account.id];
+
+    return SizeTransition(
+      sizeFactor: animation,
+      child: FadeTransition(
+        opacity: animation,
+        child: Card(
+          margin: const EdgeInsets.only(bottom: 12),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  account.name,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                ),
+                Text(
+                  account.broker.name,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _controllers[account.id],
+                        keyboardType:
+                            const TextInputType.numberWithOptions(decimal: true),
+                        decoration: InputDecoration(
+                          labelText: 'Balance (${account.currency})',
+                          isDense: true,
+                          errorText: error,
+                        ),
+                        enabled: !isRemoving,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    FilledButton(
+                      onPressed: isSubmitting || isRemoving
+                          ? null
+                          : () => _submitSnapshot(account),
+                      child: isSubmitting
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                              ),
+                            )
+                          : const Text('Save'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _submitSnapshot(Account account) async {
@@ -67,10 +143,31 @@ class _QuickSnapshotSheetState extends ConsumerState<QuickSnapshotSheet> {
         snapshotDate: DateTime.now(),
       );
 
-      setState(() {
-        _submitting.remove(account.id);
-        _completed.add(account.id);
-      });
+      _submitting.remove(account.id);
+      _completed.add(account.id);
+
+      // Animate removal of the card
+      final index = _visibleAccounts.indexWhere((a) => a.id == account.id);
+      if (index != -1) {
+        final removedAccount = _visibleAccounts.removeAt(index);
+        _listKey.currentState?.removeItem(
+          index,
+          (context, animation) => _buildAccountCard(
+            removedAccount,
+            animation,
+            isRemoving: true,
+          ),
+          duration: const Duration(milliseconds: 300),
+        );
+      }
+
+      // Refresh the accounts provider so the banner updates
+      ref.invalidate(accountsProvider);
+
+      // Check if all done
+      if (_visibleAccounts.isEmpty) {
+        setState(() {});
+      }
     } catch (e) {
       setState(() {
         _submitting.remove(account.id);
@@ -81,9 +178,6 @@ class _QuickSnapshotSheetState extends ConsumerState<QuickSnapshotSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final remainingAccounts =
-        widget.accounts.where((a) => !_completed.contains(a.id)).toList();
-
     return DraggableScrollableSheet(
       initialChildSize: 0.5,
       minChildSize: 0.3,
@@ -133,7 +227,7 @@ class _QuickSnapshotSheetState extends ConsumerState<QuickSnapshotSheet> {
 
               // Account list
               Expanded(
-                child: remainingAccounts.isEmpty
+                child: _visibleAccounts.isEmpty
                     ? Center(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
@@ -156,80 +250,16 @@ class _QuickSnapshotSheetState extends ConsumerState<QuickSnapshotSheet> {
                           ],
                         ),
                       )
-                    : ListView.builder(
+                    : AnimatedList(
+                        key: _listKey,
                         controller: scrollController,
-                        itemCount: remainingAccounts.length,
-                        itemBuilder: (context, index) {
-                          final account = remainingAccounts[index];
-                          final isSubmitting =
-                              _submitting.contains(account.id);
-                          final error = _errors[account.id];
-
-                          return Card(
-                            margin: const EdgeInsets.only(bottom: 12),
-                            child: Padding(
-                              padding: const EdgeInsets.all(16),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    account.name,
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .titleMedium
-                                        ?.copyWith(
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                  ),
-                                  Text(
-                                    account.broker.name,
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .bodySmall
-                                        ?.copyWith(
-                                          color: Theme.of(context)
-                                              .colorScheme
-                                              .onSurfaceVariant,
-                                        ),
-                                  ),
-                                  const SizedBox(height: 12),
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: TextField(
-                                          controller: _controllers[account.id],
-                                          keyboardType: const TextInputType
-                                              .numberWithOptions(decimal: true),
-                                          decoration: InputDecoration(
-                                            labelText:
-                                                'Balance (${account.currency})',
-                                            isDense: true,
-                                            errorText: error,
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      FilledButton(
-                                        onPressed: isSubmitting
-                                            ? null
-                                            : () => _submitSnapshot(account),
-                                        child: isSubmitting
-                                            ? const SizedBox(
-                                                width: 20,
-                                                height: 20,
-                                                child:
-                                                    CircularProgressIndicator(
-                                                  strokeWidth: 2,
-                                                ),
-                                              )
-                                            : const Text('Save'),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-                          );
+                        initialItemCount: _visibleAccounts.length,
+                        itemBuilder: (context, index, animation) {
+                          if (index >= _visibleAccounts.length) {
+                            return const SizedBox.shrink();
+                          }
+                          final account = _visibleAccounts[index];
+                          return _buildAccountCard(account, animation);
                         },
                       ),
               ),

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/models/account.dart';
-import '../../data/models/snapshot.dart';
 import '../providers/accounts_provider.dart';
 
 class AddSnapshotDialog extends ConsumerStatefulWidget {
@@ -32,11 +31,8 @@ class _AddSnapshotDialogState extends ConsumerState<AddSnapshotDialog> {
   @override
   void initState() {
     super.initState();
-    // Pre-fill with last known balance
-    final lastBalance = widget.account.latestSnapshot?.balanceValue;
-    _balanceController = TextEditingController(
-      text: lastBalance?.toStringAsFixed(2) ?? '',
-    );
+    // Start with empty balance field
+    _balanceController = TextEditingController();
     _currency = widget.account.currency;
     _date = DateTime.now();
   }
@@ -66,13 +62,24 @@ class _AddSnapshotDialogState extends ConsumerState<AddSnapshotDialog> {
 
       widget.onSaved();
     } catch (e) {
+      // Silently handle duplicate snapshots (already exists for this date)
+      final errorStr = e.toString().toLowerCase();
+      if (errorStr.contains('already exists') ||
+          errorStr.contains('duplicate') ||
+          errorStr.contains('unique')) {
+        // Just close the dialog without error
+        if (mounted) Navigator.pop(context);
+        return;
+      }
       setState(() {
         _error = e.toString();
       });
     } finally {
-      setState(() {
-        _loading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _loading = false;
+        });
+      }
     }
   }
 
@@ -119,9 +126,9 @@ class _AddSnapshotDialogState extends ConsumerState<AddSnapshotDialog> {
               ],
               TextFormField(
                 controller: _balanceController,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: 'Balance',
-                  prefixIcon: Icon(Icons.attach_money),
+                  prefixText: '$_currency ',
                 ),
                 keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),

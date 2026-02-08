@@ -70,6 +70,12 @@ class AuthNotifier extends AsyncNotifier<User?> {
     state = const AsyncData(null);
   }
 
+  /// Clear auth state without clearing tokens.
+  /// Used when biometric fails but we want to allow password re-auth.
+  void clearAuthState() {
+    state = const AsyncData(null);
+  }
+
   /// Attempt to unlock with biometrics.
   /// Returns true if successful.
   Future<bool> unlockWithBiometrics() async {

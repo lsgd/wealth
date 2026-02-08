@@ -1,13 +1,14 @@
 import 'package:intl/intl.dart';
 
 /// Currency formatter for displaying monetary values.
+/// Displays whole numbers only (floored).
 String formatCurrency(double value, String currency) {
   final format = NumberFormat.currency(
     locale: 'de_CH',
     symbol: currency,
-    decimalDigits: 2,
+    decimalDigits: 0,
   );
-  return format.format(value);
+  return format.format(value.floor());
 }
 
 /// Compact currency formatter for large values.
