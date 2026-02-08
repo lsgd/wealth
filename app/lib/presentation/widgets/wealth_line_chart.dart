@@ -8,7 +8,7 @@ import '../../data/models/wealth_summary.dart';
 import '../providers/core_providers.dart';
 import '../providers/wealth_provider.dart';
 
-class WealthLineChart extends ConsumerWidget {
+class WealthLineChart extends ConsumerStatefulWidget {
   final List<WealthHistoryPoint> history;
   final String currency;
 
@@ -19,12 +19,19 @@ class WealthLineChart extends ConsumerWidget {
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<WealthLineChart> createState() => _WealthLineChartState();
+}
+
+class _WealthLineChartState extends ConsumerState<WealthLineChart> {
+  int? _markedIndex;
+
+  @override
+  Widget build(BuildContext context) {
     final chartRange = ref.watch(chartRangeProvider);
     final chartGranularity = ref.watch(chartGranularityProvider);
     final dateFormat = ref.watch(dateFormatProvider);
 
-    if (history.isEmpty) {
+    if (widget.history.isEmpty) {
       return Card(
         child: SizedBox(
           height: 250,
@@ -38,7 +45,7 @@ class WealthLineChart extends ConsumerWidget {
       );
     }
 
-    final spots = history.asMap().entries.map((entry) {
+    final spots = widget.history.asMap().entries.map((entry) {
       return FlSpot(
         entry.key.toDouble(),
         entry.value.totalWealth,
@@ -47,9 +54,12 @@ class WealthLineChart extends ConsumerWidget {
 
     final minY = spots.map((s) => s.y).reduce((a, b) => a < b ? a : b);
     final maxY = spots.map((s) => s.y).reduce((a, b) => a > b ? a : b);
-    final range = maxY - minY;
-    final padding = range > 0 ? range * 0.1 : maxY * 0.1;
-    final gridInterval = range > 0 ? range / 4 : maxY / 4;
+
+    // Calculate 50k step interval and round min/max to 50k boundaries
+    const stepSize = 50000.0;
+    final roundedMin = (minY / stepSize).floor() * stepSize;
+    final roundedMax = ((maxY / stepSize).ceil() + 1) * stepSize;
+    final gridInterval = stepSize;
 
     return Card(
       child: Padding(
@@ -150,22 +160,22 @@ class WealthLineChart extends ConsumerWidget {
                         interval: (spots.length / 4).ceilToDouble(),
                         getTitlesWidget: (value, meta) {
                           final index = value.toInt();
-                          if (index < 0 || index >= history.length) {
+                          if (index < 0 || index >= widget.history.length) {
                             return const SizedBox.shrink();
                           }
                           // Skip first and last to avoid edge cutoff
-                          if (index == 0 || index == history.length - 1) {
+                          if (index == 0 || index == widget.history.length - 1) {
                             return const SizedBox.shrink();
                           }
-                          final date = history[index].dateTime;
+                          final date = widget.history[index].dateTime;
                           // Use day.month.year format for daily, month+year for monthly
-                          final dateFormat = chartGranularity == 'daily'
+                          final dateFmt = chartGranularity == 'daily'
                               ? DateFormat('d.M.yy')
                               : DateFormat('MMM yy');
                           return Padding(
                             padding: const EdgeInsets.only(top: 4),
                             child: Text(
-                              dateFormat.format(date),
+                              dateFmt.format(date),
                               style: Theme.of(context)
                                   .textTheme
                                   .labelSmall
@@ -203,8 +213,8 @@ class WealthLineChart extends ConsumerWidget {
                     ),
                   ),
                   borderData: FlBorderData(show: false),
-                  minY: minY - padding,
-                  maxY: maxY + padding,
+                  minY: roundedMin,
+                  maxY: roundedMax,
                   lineBarsData: [
                     LineChartBarData(
                       spots: spots,
@@ -213,7 +223,21 @@ class WealthLineChart extends ConsumerWidget {
                       color: Theme.of(context).colorScheme.primary,
                       barWidth: 2,
                       isStrokeCapRound: true,
-                      dotData: const FlDotData(show: false),
+                      dotData: FlDotData(
+                        show: true,
+                        checkToShowDot: (spot, barData) {
+                          // Show dot only for marked point
+                          return spot.x.toInt() == _markedIndex;
+                        },
+                        getDotPainter: (spot, percent, barData, index) {
+                          return FlDotCirclePainter(
+                            radius: 6,
+                            color: Theme.of(context).colorScheme.primary,
+                            strokeWidth: 2,
+                            strokeColor: Theme.of(context).colorScheme.surface,
+                          );
+                        },
+                      ),
                       belowBarData: BarAreaData(
                         show: true,
                         color: Theme.of(context)
@@ -224,19 +248,37 @@ class WealthLineChart extends ConsumerWidget {
                     ),
                   ],
                   lineTouchData: LineTouchData(
+                    handleBuiltInTouches: true,
+                    touchCallback: (event, response) {
+                      if (event is FlTapUpEvent) {
+                        final touchedIndex = response?.lineBarSpots?.firstOrNull?.x.toInt();
+                        if (touchedIndex != null) {
+                          setState(() {
+                            if (_markedIndex == touchedIndex) {
+                              // Unmark if tapping same point
+                              _markedIndex = null;
+                            } else {
+                              // Mark new point
+                              _markedIndex = touchedIndex;
+                            }
+                          });
+                        }
+                      }
+                    },
                     touchTooltipData: LineTouchTooltipData(
                       maxContentWidth: 180,
                       fitInsideHorizontally: true,
                       fitInsideVertically: true,
+                      tooltipMargin: 16,
                       getTooltipColor: (touchedSpot) =>
                           Theme.of(context).colorScheme.surfaceContainerHighest,
                       getTooltipItems: (touchedSpots) {
                         return touchedSpots.map((spot) {
                           final index = spot.x.toInt();
-                          if (index < 0 || index >= history.length) return null;
-                          final point = history[index];
+                          if (index < 0 || index >= widget.history.length) return null;
+                          final point = widget.history[index];
                           return LineTooltipItem(
-                            '${formatDate(point.dateTime, dateFormat)}\n${formatCurrency(point.totalWealth, currency)}',
+                            '${formatDate(point.dateTime, dateFormat)}\n${formatCurrency(point.totalWealth, widget.currency)}',
                             TextStyle(
                               color: Theme.of(context).colorScheme.onSurface,
                               fontWeight: FontWeight.w500,
@@ -245,7 +287,40 @@ class WealthLineChart extends ConsumerWidget {
                         }).toList();
                       },
                     ),
+                    getTouchedSpotIndicator: (barData, spotIndexes) {
+                      return spotIndexes.map((index) {
+                        return TouchedSpotIndicatorData(
+                          FlLine(
+                            color: Theme.of(context).colorScheme.primary,
+                            strokeWidth: 1,
+                            dashArray: [4, 4],
+                          ),
+                          FlDotData(
+                            show: true,
+                            getDotPainter: (spot, percent, bar, idx) {
+                              return FlDotCirclePainter(
+                                radius: 6,
+                                color: Theme.of(context).colorScheme.primary,
+                                strokeWidth: 2,
+                                strokeColor: Theme.of(context).colorScheme.surface,
+                              );
+                            },
+                          ),
+                        );
+                      }).toList();
+                    },
                   ),
+                  showingTooltipIndicators: _markedIndex != null
+                      ? [
+                          ShowingTooltipIndicators([
+                            LineBarSpot(
+                              LineChartBarData(spots: spots),
+                              0,
+                              spots[_markedIndex!],
+                            ),
+                          ])
+                        ]
+                      : [],
                 ),
               ),
             ),
