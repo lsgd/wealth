@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'presentation/providers/auth_provider.dart';
 import 'presentation/providers/core_providers.dart';
 import 'presentation/screens/dashboard_screen.dart';
+import 'presentation/screens/imprint_screen.dart';
 import 'presentation/screens/login_screen.dart';
 import 'presentation/screens/server_config_screen.dart';
 import 'presentation/screens/settings_screen.dart';
@@ -64,6 +65,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/settings',
         builder: (context, state) => const SettingsScreen(),
+      ),
+      GoRoute(
+        path: '/imprint',
+        builder: (context, state) => const ImprintScreen(),
       ),
     ],
   );

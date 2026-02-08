@@ -153,42 +153,272 @@ integration.close()
 
 ### Adding New Brokers
 
-1. Create integration class in `brokers/integrations/`:
+Follow these steps to add support for a new broker:
+
+#### Step 1: Create Integration Class
+
+Create a new file in `brokers/integrations/` (e.g., `new_broker.py`):
 
 ```python
 # brokers/integrations/new_broker.py
-from .base import BrokerIntegrationBase, AuthResult, AccountInfo, BalanceInfo
+from datetime import date
+from decimal import Decimal
+from typing import Any, Dict, List, Optional
+
+from .base import (
+    BrokerIntegrationBase,
+    AuthResult,
+    AccountInfo,
+    BalanceInfo,
+    PositionInfo,
+)
+
 
 class NewBrokerIntegration(BrokerIntegrationBase):
-    def authenticate(self) -> AuthResult:
-        # Implement authentication
-        pass
+    """Integration for New Broker."""
 
-    def complete_2fa(self, auth_code, session_data) -> AuthResult:
-        # Implement 2FA if needed
-        pass
+    def authenticate(self) -> AuthResult:
+        """
+        Authenticate with the broker API.
+
+        Returns:
+            AuthResult with success=True, or requires_2fa=True if 2FA needed.
+        """
+        username = self.credentials.get('username')
+        password = self.credentials.get('password')
+
+        # Implement your authentication logic here
+        # ...
+
+        return AuthResult(success=True)
+
+    def complete_2fa(
+        self,
+        auth_code: Optional[str],
+        session_data: Dict[str, Any]
+    ) -> AuthResult:
+        """
+        Complete 2FA authentication.
+
+        For app-based approval (decoupled), auth_code may be None.
+        For SMS/TAN codes, auth_code contains the user-entered code.
+        """
+        # Implement 2FA verification if broker requires it
+        return AuthResult(success=True)
 
     def get_accounts(self) -> List[AccountInfo]:
-        # Fetch account list
-        pass
+        """Fetch list of accounts from the broker."""
+        # Return list of AccountInfo objects
+        return [
+            AccountInfo(
+                identifier='account-123',
+                name='Main Account',
+                account_type='brokerage',  # checking, savings, brokerage, retirement
+                currency='EUR',
+            )
+        ]
 
-    def get_balance(self, account_identifier) -> BalanceInfo:
-        # Fetch balance
-        pass
+    def get_balance(self, account_identifier: str) -> BalanceInfo:
+        """Fetch current balance for an account."""
+        # Fetch and return balance
+        return BalanceInfo(
+            balance=Decimal('10000.00'),
+            currency='EUR',
+            balance_date=date.today(),
+            raw_data={'original': 'response'},  # Store full API response
+        )
+
+    def get_positions(self, account_identifier: str) -> List[PositionInfo]:
+        """Fetch positions for investment accounts (optional)."""
+        return [
+            PositionInfo(
+                symbol='AAPL',
+                name='Apple Inc.',
+                quantity=Decimal('10'),
+                price_per_unit=Decimal('150.00'),
+                market_value=Decimal('1500.00'),
+                currency='USD',
+                isin='US0378331005',
+                asset_class='equity',  # equity, fixed_income, cash, crypto, etc.
+            )
+        ]
+
+    def supports_historical_data(self) -> bool:
+        """Return True if broker provides historical balance data."""
+        return False
+
+    def get_historical_balances(
+        self,
+        account_identifier: str,
+        start_date: date,
+        end_date: date
+    ) -> List[BalanceInfo]:
+        """Fetch historical balances (optional, override if supported)."""
+        return []
 ```
 
-2. Register in factory (`brokers/integrations/__init__.py`):
+#### Step 2: Register in Factory
+
+Add your broker to `brokers/integrations/__init__.py`:
 
 ```python
 def get_broker_integration(broker, credentials):
     if broker.code == 'new_broker':
         from .new_broker import NewBrokerIntegration
         return NewBrokerIntegration(credentials)
+    # ... existing brokers ...
 ```
 
-3. Add broker fixture in `brokers/fixtures/initial_brokers.json`
+#### Step 3: Add Broker Fixture
 
-4. Load fixture: `python manage.py loaddata initial_brokers`
+Add the broker definition to `brokers/fixtures/initial_brokers.json`:
+
+```json
+{
+  "model": "brokers.broker",
+  "pk": 8,
+  "fields": {
+    "code": "new_broker",
+    "name": "New Broker Name",
+    "integration_type": "rest",
+    "bank_identifier": "",
+    "fints_server": "",
+    "api_base_url": "https://api.newbroker.com",
+    "logo_url": "",
+    "website_url": "https://www.newbroker.com",
+    "country": "US",
+    "is_active": true,
+    "supports_2fa": true,
+    "supports_auto_sync": true,
+    "credential_schema": {
+      "type": "object",
+      "required": ["username", "password"],
+      "properties": {
+        "username": {
+          "type": "string",
+          "title": "Username",
+          "description": "Your login username"
+        },
+        "password": {
+          "type": "string",
+          "title": "Password",
+          "format": "password",
+          "description": "Your account password"
+        },
+        "totp_secret": {
+          "type": "string",
+          "title": "TOTP Secret (optional)",
+          "format": "password",
+          "description": "Base32 secret for 2FA (if applicable)"
+        }
+      },
+      "description": "Optional: Add usage instructions here"
+    },
+    "created_at": "2026-01-20T00:00:00Z",
+    "updated_at": "2026-01-20T00:00:00Z"
+  }
+}
+```
+
+#### Step 4: Load Fixture
+
+```bash
+python manage.py loaddata initial_brokers
+```
+
+### Broker Configuration Reference
+
+#### Broker Model Fields
+
+| Field | Description |
+|-------|-------------|
+| `code` | Unique identifier (lowercase, no spaces) |
+| `name` | Display name shown to users |
+| `integration_type` | `fints` (German banks), `rest`, `graphql` |
+| `bank_identifier` | BLZ for German banks, empty otherwise |
+| `fints_server` | FinTS server URL (German banks only) |
+| `api_base_url` | Base URL for REST/GraphQL APIs |
+| `country` | ISO country code (DE, US, CH, etc.) |
+| `is_active` | Whether broker is available to users |
+| `supports_2fa` | Whether 2FA is required/supported |
+| `supports_auto_sync` | Whether automatic sync is possible |
+| `credential_schema` | JSON Schema defining required credentials |
+
+#### Credential Schema
+
+The `credential_schema` uses JSON Schema to define what credentials are needed:
+
+```json
+{
+  "type": "object",
+  "required": ["username", "password"],
+  "properties": {
+    "username": {
+      "type": "string",
+      "title": "Display Label",
+      "description": "Help text for users"
+    },
+    "password": {
+      "type": "string",
+      "format": "password",
+      "title": "Password"
+    }
+  },
+  "description": "Overall instructions shown to users"
+}
+```
+
+**Supported `format` values:**
+- `password` - Masks input in the UI
+- (no format) - Plain text input
+
+#### Integration Types
+
+| Type | Use Case | Example |
+|------|----------|---------|
+| `fints` | German banks using FinTS/HBCI protocol | DKB, Commerzbank |
+| `rest` | Standard REST APIs | TrueWealth, VIAC, IBKR |
+| `graphql` | GraphQL APIs | Morgan Stanley |
+
+### Data Classes Reference
+
+```python
+@dataclass
+class AccountInfo:
+    identifier: str      # IBAN, account number, or external ID
+    name: str            # Account name/description
+    account_type: str    # checking, savings, brokerage, retirement
+    currency: str        # ISO 4217 currency code
+
+@dataclass
+class BalanceInfo:
+    balance: Decimal
+    currency: str
+    balance_date: date
+    available_balance: Optional[Decimal] = None
+    raw_data: Optional[Dict[str, Any]] = None
+
+@dataclass
+class PositionInfo:
+    symbol: str
+    name: str
+    quantity: Decimal
+    price_per_unit: Decimal
+    market_value: Decimal
+    currency: str
+    isin: Optional[str] = None
+    cost_basis: Optional[Decimal] = None
+    asset_class: str = 'other'  # equity, fixed_income, cash, crypto, etc.
+
+@dataclass
+class AuthResult:
+    success: bool
+    requires_2fa: bool = False
+    two_fa_type: Optional[str] = None  # 'app', 'sms', 'tan'
+    session_data: Optional[Dict[str, Any]] = None
+    error_message: Optional[str] = None
+    challenge_data: Optional[Dict[str, Any]] = None
+```
 
 ## API Authentication
 

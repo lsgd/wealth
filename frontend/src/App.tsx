@@ -6,6 +6,7 @@ import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
 import DashboardPage from './pages/DashboardPage'
 import SettingsPage from './pages/SettingsPage'
+import ImprintPage from './pages/ImprintPage'
 
 function App() {
   const { isAuthenticated, loading } = useAuth()
@@ -41,6 +42,7 @@ function App() {
             </ProtectedRoute>
           }
         />
+        <Route path="/imprint" element={<ImprintPage />} />
       </Routes>
     </Layout>
   )

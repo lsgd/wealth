@@ -349,6 +349,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
           const SizedBox(height: 24),
 
+          // About Section
+          _SectionHeader(title: 'About'),
+          ListTile(
+            leading: const Icon(Icons.info_outline),
+            title: const Text('Imprint & Legal'),
+            subtitle: const Text('Developer info, source code, donations'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push('/imprint'),
+          ),
+          const SizedBox(height: 24),
+
           // Logout
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),

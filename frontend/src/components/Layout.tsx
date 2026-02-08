@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { LogOut, Settings, TrendingUp } from 'lucide-react';
+import { LogOut, Settings, TrendingUp, Info } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function Layout({ children }: { children: React.ReactNode }) {
@@ -16,17 +16,22 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           <TrendingUp size={24} />
           <span>Wealth Tracker</span>
         </Link>
-        {user && (
-          <div className="header-right">
-            <span className="header-user">{displayName}</span>
-            <Link to="/settings" className="btn btn-ghost" title="Settings">
-              <Settings size={18} />
-            </Link>
-            <button onClick={logout} className="btn btn-ghost" title="Logout">
-              <LogOut size={18} />
-            </button>
-          </div>
-        )}
+        <div className="header-right">
+          {user && (
+            <>
+              <span className="header-user">{displayName}</span>
+              <Link to="/settings" className="btn btn-ghost" title="Settings">
+                <Settings size={18} />
+              </Link>
+              <button onClick={logout} className="btn btn-ghost" title="Logout">
+                <LogOut size={18} />
+              </button>
+            </>
+          )}
+          <Link to="/imprint" className="btn btn-ghost" title="Imprint">
+            <Info size={18} />
+          </Link>
+        </div>
       </header>
       <main className="app-main">{children}</main>
     </div>

@@ -1901,3 +1901,127 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     text-align: center;
   }
 }
+
+/* =========================================
+   Imprint Page
+   ========================================= */
+
+.imprint-page {
+  max-width: 700px;
+}
+
+.imprint-page h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin-bottom: 24px;
+}
+
+.imprint-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.imprint-section {
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 24px;
+}
+
+.imprint-section h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 16px;
+  color: var(--color-text);
+}
+
+.imprint-section h2 svg {
+  color: var(--color-primary);
+}
+
+.imprint-section p {
+  color: var(--color-text-muted);
+  margin-bottom: 16px;
+  line-height: 1.6;
+}
+
+.imprint-section p:last-child {
+  margin-bottom: 0;
+}
+
+.developer-name {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.link-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.imprint-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  color: var(--color-text);
+  text-decoration: none;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.imprint-link:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--color-primary);
+  text-decoration: none;
+}
+
+.imprint-link svg:first-child {
+  color: var(--color-primary);
+}
+
+.imprint-link svg:last-child {
+  margin-left: auto;
+  color: var(--color-text-muted);
+}
+
+.donate-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.donate-button svg:last-child {
+  opacity: 0.7;
+}
+
+.imprint-footer {
+  text-align: center;
+  padding: 32px 0 16px;
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+
+@media (max-width: 480px) {
+  .imprint-section {
+    padding: 16px;
+  }
+
+  .imprint-page h1 {
+    font-size: 1.3rem;
+    margin-bottom: 16px;
+  }
+
+  .imprint-link {
+    padding: 14px;
+  }
+}
