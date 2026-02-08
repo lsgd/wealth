@@ -202,8 +202,8 @@ class Command(BaseCommand):
 
         # Try to find exchange rate
         rate = ExchangeRate.objects.filter(
-            base_currency=from_currency,
-            target_currency=to_currency,
+            from_currency=from_currency,
+            to_currency=to_currency,
             rate_date__lte=rate_date
         ).order_by('-rate_date').first()
 
@@ -212,8 +212,8 @@ class Command(BaseCommand):
 
         # Try inverse
         rate = ExchangeRate.objects.filter(
-            base_currency=to_currency,
-            target_currency=from_currency,
+            from_currency=to_currency,
+            to_currency=from_currency,
             rate_date__lte=rate_date
         ).order_by('-rate_date').first()
 

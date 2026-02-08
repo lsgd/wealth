@@ -1250,8 +1250,8 @@ class CSVImportView(APIView):
 
                     # Fetch exchange rate if missing
                     if currency != base_currency and not ExchangeRate.objects.filter(
-                        base_currency=currency,
-                        target_currency=base_currency,
+                        from_currency=currency,
+                        to_currency=base_currency,
                         rate_date=snapshot_date
                     ).exists():
                         from exchange_rates.services import ExchangeRateService
