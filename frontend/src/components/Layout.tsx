@@ -6,7 +6,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
 
   const displayName = user
-    ? [user.first_name, user.last_name].filter(Boolean).join(' ') || user.username
+    ? [user.first_name, user.last_name].filter(Boolean).join(' ').trim() || user.username
     : '';
 
   return (
