@@ -264,6 +264,10 @@ CREDENTIAL_ENCRYPTION_KEY=your-fernet-key-here
 
 # CORS
 CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
+
+# FinTS Product ID for German bank integrations (DKB, Commerzbank)
+# Required for FinTS/HBCI protocol - register at https://www.hbci-zka.de/
+FINTS_PRODUCT_ID=your-fints-product-id
 ```
 
 ### Generate Encryption Key
