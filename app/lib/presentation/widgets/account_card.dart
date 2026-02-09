@@ -112,27 +112,35 @@ class AccountCard extends ConsumerWidget {
                     ],
                   ),
                   const SizedBox(width: 8),
-                  // Sync button (only for auto-sync accounts)
-                  if (_canSync)
-                    IconButton(
-                      icon: isSyncing
-                          ? SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Theme.of(context).colorScheme.primary,
-                              ),
-                            )
-                          : const Icon(Icons.sync),
-                      onPressed: isSyncing ? null : onSync,
-                      tooltip: 'Sync Account',
-                    ),
-                  // Add button
-                  IconButton(
-                    icon: const Icon(Icons.add),
-                    onPressed: () => _showAddSnapshotDialog(context),
-                    tooltip: 'Add Snapshot',
+                  // Buttons stacked vertically: Add on top, Sync below
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Add button
+                      IconButton(
+                        icon: const Icon(Icons.add),
+                        onPressed: () => _showAddSnapshotDialog(context),
+                        tooltip: 'Add Snapshot',
+                        visualDensity: VisualDensity.compact,
+                      ),
+                      // Sync button (only for auto-sync accounts)
+                      if (_canSync)
+                        IconButton(
+                          icon: isSyncing
+                              ? SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Theme.of(context).colorScheme.primary,
+                                  ),
+                                )
+                              : const Icon(Icons.sync),
+                          onPressed: isSyncing ? null : onSync,
+                          tooltip: 'Sync Account',
+                          visualDensity: VisualDensity.compact,
+                        ),
+                    ],
                   ),
                 ],
               ),
@@ -141,14 +149,28 @@ class AccountCard extends ConsumerWidget {
                 const SizedBox(height: 8),
                 Padding(
                   padding: const EdgeInsets.only(left: 20),
-                  child: Text(
-                    'Updated ${formatDateSmart(snapshot.snapshotDateTime, dateFormat)}',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onSurfaceVariant
-                              .withValues(alpha: 0.7),
-                        ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Updated ${_getSyncDateText(dateFormat)}',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant
+                                  .withValues(alpha: 0.7),
+                            ),
+                      ),
+                      Text(
+                        'Balance from ${formatDateSmart(snapshot.snapshotDateTime, dateFormat)}',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant
+                                  .withValues(alpha: 0.7),
+                            ),
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -159,14 +181,49 @@ class AccountCard extends ConsumerWidget {
     );
   }
 
-  Color _getStatusColor(BuildContext context) {
-    // Always show staleness based on snapshot date
+  /// Get the sync date text for "Updated" line.
+  /// For auto-sync accounts, shows lastSyncAt. For manual, shows snapshot date.
+  String _getSyncDateText(String dateFormat) {
+    final lastSyncAt = account.lastSyncAt;
     final snapshot = account.latestSnapshot;
-    if (snapshot == null) {
+
+    // For auto-sync accounts, prefer lastSyncAt
+    if (lastSyncAt != null && _canSync) {
+      final syncDate = DateTime.tryParse(lastSyncAt);
+      if (syncDate != null) {
+        return formatDateSmart(syncDate, dateFormat);
+      }
+    }
+
+    // Fallback to snapshot date
+    if (snapshot != null) {
+      return formatDateSmart(snapshot.snapshotDateTime, dateFormat);
+    }
+
+    return 'never';
+  }
+
+  /// Get the DateTime to use for staleness calculation.
+  DateTime? _getUpdateDateTime() {
+    final lastSyncAt = account.lastSyncAt;
+    final snapshot = account.latestSnapshot;
+
+    // For auto-sync accounts, prefer lastSyncAt
+    if (lastSyncAt != null && _canSync) {
+      final syncDate = DateTime.tryParse(lastSyncAt);
+      if (syncDate != null) return syncDate;
+    }
+
+    // Fallback to snapshot date
+    return snapshot?.snapshotDateTime;
+  }
+
+  Color _getStatusColor(BuildContext context) {
+    final updateDateTime = _getUpdateDateTime();
+    if (updateDateTime == null) {
       return Theme.of(context).colorScheme.error;
     }
-    final daysSinceUpdate =
-        DateTime.now().difference(snapshot.snapshotDateTime).inDays;
+    final daysSinceUpdate = DateTime.now().difference(updateDateTime).inDays;
     if (daysSinceUpdate <= 1) {
       return Colors.green;
     } else if (daysSinceUpdate <= 7) {

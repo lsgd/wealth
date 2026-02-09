@@ -163,9 +163,19 @@ class ApiClient {
   Future<Response<T>> post<T>(
     String path, {
     dynamic data,
+    Duration? timeout,
   }) async {
     try {
-      return await _dio.post<T>(path, data: data);
+      return await _dio.post<T>(
+        path,
+        data: data,
+        options: timeout != null
+            ? Options(
+                sendTimeout: timeout,
+                receiveTimeout: timeout,
+              )
+            : null,
+      );
     } on DioException catch (e) {
       throw _handleError(e);
     }

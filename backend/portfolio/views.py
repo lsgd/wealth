@@ -472,7 +472,6 @@ class SyncAllAccountsView(APIView):
                     'name': account.name,
                     'error': str(e) or repr(e),
                 })
-
         return Response({
             'status': 'success',
             'synced_count': len(results['synced']),

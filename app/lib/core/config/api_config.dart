@@ -4,6 +4,10 @@ class ApiConfig {
   static const Duration connectTimeout = Duration(seconds: 30);
   static const Duration receiveTimeout = Duration(seconds: 30);
 
+  /// Extended timeout for sync operations that may require 2FA approval.
+  /// FinTS banks like DKB poll for up to 5 minutes waiting for push approval.
+  static const Duration syncTimeout = Duration(minutes: 6);
+
   /// API endpoints
   static const String loginPath = '/api/auth/login/';
   static const String refreshPath = '/api/auth/refresh/';

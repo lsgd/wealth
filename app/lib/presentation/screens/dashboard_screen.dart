@@ -70,10 +70,28 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     if (_syncingAccounts.contains(account.id)) return;
 
     setState(() => _syncingAccounts.add(account.id));
+
+    // Show hint that some banks may require 2FA approval
+    _showSyncHint();
+
     try {
       final repo = ref.read(accountRepositoryProvider);
-      await repo.syncAccount(account.id);
+      final result = await repo.syncAccount(account.id);
       await _refresh();
+
+      if (mounted) {
+        final status = result['status'] as String?;
+        final message = result['message'] as String?;
+        if (status == 'success' && message != null) {
+          _showSuccessSnackBar(message);
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        _showSyncErrorsDialog([
+          {'name': account.name, 'error': e.toString()}
+        ]);
+      }
     } finally {
       if (mounted) {
         setState(() => _syncingAccounts.remove(account.id));
@@ -85,15 +103,145 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     if (_syncingAll) return;
 
     setState(() => _syncingAll = true);
+
+    // Show hint that some banks may require approval
+    _showSyncHint();
+
     try {
       final repo = ref.read(accountRepositoryProvider);
-      await repo.syncAllAccounts();
+      final result = await repo.syncAllAccounts();
       await _refresh();
+
+      if (mounted) {
+        final syncedCount = (result['synced'] as List?)?.length ?? 0;
+        final errors = result['errors'] as List? ?? [];
+        final skippedCount = (result['skipped'] as List?)?.length ?? 0;
+
+        if (errors.isNotEmpty) {
+          // Show error dialog with summary
+          _showSyncErrorsDialog(errors, syncedCount: syncedCount);
+        } else if (syncedCount > 0) {
+          _showSuccessSnackBar('Synced $syncedCount account${syncedCount == 1 ? '' : 's'}');
+        } else {
+          _showSuccessSnackBar(skippedCount > 0 ? 'All accounts up to date' : 'No accounts to sync');
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        _showSyncErrorsDialog([
+          {'name': 'Sync', 'error': e.toString()}
+        ]);
+      }
     } finally {
       if (mounted) {
         setState(() => _syncingAll = false);
       }
     }
+  }
+
+  void _showSuccessSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Theme.of(context).colorScheme.inverseSurface,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  void _showSyncErrorsDialog(List errors, {int syncedCount = 0}) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Theme.of(context).colorScheme.error),
+            const SizedBox(width: 12),
+            const Text('Sync Results'),
+          ],
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Summary
+              Text(
+                syncedCount > 0
+                    ? '$syncedCount account${syncedCount == 1 ? '' : 's'} synced successfully, ${errors.length} had errors:'
+                    : '${errors.length} account${errors.length == 1 ? '' : 's'} had errors:',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+              const SizedBox(height: 16),
+              // Error list
+              Flexible(
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: errors.length,
+                  separatorBuilder: (_, __) => const Divider(),
+                  itemBuilder: (context, index) {
+                    final error = errors[index] as Map<String, dynamic>;
+                    final name = error['name'] as String? ?? 'Unknown Account';
+                    final message = error['error'] as String? ?? 'Unknown error';
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            name,
+                            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            message,
+                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                  color: Theme.of(context).colorScheme.error,
+                                ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showSyncHint() {
+    final colorScheme = Theme.of(context).colorScheme;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(Icons.smartphone, color: colorScheme.onInverseSurface, size: 20),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Check your banking app for approval if required',
+                style: TextStyle(color: colorScheme.onInverseSurface),
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: colorScheme.inverseSurface,
+        duration: const Duration(seconds: 5),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   /// Check if any account supports auto-sync.
@@ -371,7 +519,7 @@ class _QuickSnapshotBanner extends ConsumerWidget {
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
-                          '${accounts.length} account${accounts.length == 1 ? '' : 's'} need${accounts.length == 1 ? 's' : ''} balance update',
+                          '${accounts.length} account${accounts.length == 1 ? '' : 's'} need${accounts.length == 1 ? 's' : ''} a balance update',
                           style: TextStyle(
                             color: Theme.of(context).colorScheme.onPrimaryContainer,
                           ),

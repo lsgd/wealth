@@ -73,12 +73,23 @@ class AccountRepository {
   }
 
   /// Trigger sync for a single account.
-  Future<void> syncAccount(int accountId) async {
-    await _apiClient.post(ApiConfig.accountSyncPath(accountId));
+  /// Uses extended timeout for 2FA approval (up to 5 minutes for banking app).
+  Future<Map<String, dynamic>> syncAccount(int accountId) async {
+    final response = await _apiClient.post(
+      ApiConfig.accountSyncPath(accountId),
+      timeout: ApiConfig.syncTimeout,
+    );
+    return response.data as Map<String, dynamic>;
   }
 
   /// Trigger sync for all accounts that support auto-sync.
-  Future<void> syncAllAccounts() async {
-    await _apiClient.post(ApiConfig.syncAllPath);
+  /// Uses extended timeout for 2FA approval (up to 5 minutes for banking app).
+  /// Returns sync results including pending_2fa accounts.
+  Future<Map<String, dynamic>> syncAllAccounts() async {
+    final response = await _apiClient.post(
+      ApiConfig.syncAllPath,
+      timeout: ApiConfig.syncTimeout,
+    );
+    return response.data as Map<String, dynamic>;
   }
 }
