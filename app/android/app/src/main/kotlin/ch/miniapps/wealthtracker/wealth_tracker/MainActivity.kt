@@ -1,4 +1,4 @@
-package ch.miniapps.wealthtracker.wealth_tracker
+package ch.miniapps.wealthtracker
 
 import io.flutter.embedding.android.FlutterActivity
 

@@ -26,7 +26,7 @@ class _QuickSnapshotSheetState extends ConsumerState<QuickSnapshotSheet>
   final Set<int> _submitting = {};
   final Set<int> _completed = {};
   final Map<int, String> _errors = {};
-  final GlobalKey<AnimatedListState> _listKey = GlobalKey<AnimatedListState>();
+  final GlobalKey<SliverAnimatedListState> _listKey = GlobalKey<SliverAnimatedListState>();
   late List<Account> _visibleAccounts;
 
   @override
@@ -184,91 +184,102 @@ class _QuickSnapshotSheetState extends ConsumerState<QuickSnapshotSheet>
       maxChildSize: 0.9,
       expand: false,
       builder: (context, scrollController) {
-        return Container(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Handle bar
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.outlineVariant,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
+        return CustomScrollView(
+          controller: scrollController,
+          slivers: [
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Handle bar
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.outlineVariant,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Title
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Quick Balance Update',
+                          style: Theme.of(context).textTheme.titleLarge,
+                        ),
+                        TextButton(
+                          onPressed: widget.onDismiss,
+                          child: const Text('Skip'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Update today\'s balances for your manual accounts',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                    ),
+                    const SizedBox(height: 24),
+                  ],
                 ),
               ),
-              const SizedBox(height: 16),
+            ),
 
-              // Title
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Quick Balance Update',
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                  TextButton(
-                    onPressed: widget.onDismiss,
-                    child: const Text('Skip'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Update today\'s balances for your manual accounts',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-              ),
-              const SizedBox(height: 24),
-
-              // Account list
-              Expanded(
-                child: _visibleAccounts.isEmpty
-                    ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.check_circle,
-                              size: 64,
-                              color: Theme.of(context).colorScheme.primary,
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              'All done!',
-                              style: Theme.of(context).textTheme.titleMedium,
-                            ),
-                            const SizedBox(height: 24),
-                            FilledButton(
-                              onPressed: widget.onSnapshotsAdded,
-                              child: const Text('Continue'),
-                            ),
-                          ],
-                        ),
-                      )
-                    : AnimatedList(
-                        key: _listKey,
-                        controller: scrollController,
-                        // Add padding at bottom to account for keyboard
-                        padding: EdgeInsets.only(
-                          bottom: MediaQuery.of(context).viewInsets.bottom,
-                        ),
-                        initialItemCount: _visibleAccounts.length,
-                        itemBuilder: (context, index, animation) {
-                          if (index >= _visibleAccounts.length) {
-                            return const SizedBox.shrink();
-                          }
-                          final account = _visibleAccounts[index];
-                          return _buildAccountCard(account, animation);
-                        },
+            // Account list or completion state
+            if (_visibleAccounts.isEmpty)
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.check_circle,
+                        size: 64,
+                        color: Theme.of(context).colorScheme.primary,
                       ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'All done!',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 24),
+                      FilledButton(
+                        onPressed: widget.onSnapshotsAdded,
+                        child: const Text('Continue'),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            else
+              SliverPadding(
+                padding: EdgeInsets.only(
+                  left: 16,
+                  right: 16,
+                  bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+                ),
+                sliver: SliverAnimatedList(
+                  key: _listKey,
+                  initialItemCount: _visibleAccounts.length,
+                  itemBuilder: (context, index, animation) {
+                    if (index >= _visibleAccounts.length) {
+                      return const SizedBox.shrink();
+                    }
+                    final account = _visibleAccounts[index];
+                    return _buildAccountCard(account, animation);
+                  },
+                ),
               ),
-            ],
-          ),
+          ],
         );
       },
     );

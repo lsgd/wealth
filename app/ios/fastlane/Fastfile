@@ -1,0 +1,200 @@
+default_platform(:ios)
+
+# Helper to get absolute path for ASC key (ASC_KEY_PATH is relative to app/ directory)
+def asc_key_path
+  return nil unless ENV['ASC_KEY_PATH']
+  # __dir__ is ios/fastlane, go up two levels to app/
+  File.expand_path(ENV['ASC_KEY_PATH'], File.expand_path("../..", __dir__))
+end
+
+platform :ios do
+  desc "Build and upload to TestFlight"
+  lane :beta do
+    setup_ci if ENV['CI']
+
+    # Setup App Store Connect API Key if available
+    key_path = asc_key_path
+    if ENV['ASC_KEY_ID'] && ENV['ASC_ISSUER_ID'] && key_path
+      app_store_connect_api_key(
+        key_id: ENV['ASC_KEY_ID'],
+        issuer_id: ENV['ASC_ISSUER_ID'],
+        key_filepath: key_path
+      )
+    end
+
+    # Ensure we have a distribution certificate
+    get_certificates(
+      platform: "ios"
+    )
+
+    # Ensure we have an App Store provisioning profile
+    get_provisioning_profile(
+      app_identifier: "ch.miniapps.wealthtracker",
+      platform: "ios"
+    )
+
+    # Install the provisioning profile
+    install_provisioning_profile(path: lane_context[SharedValues::SIGH_PROFILE_PATH])
+
+    # Build the Flutter archive (without export)
+    Dir.chdir("..") do
+      sh("flutter build ios --release --no-codesign")
+    end
+
+    # Archive and export
+    archive_path = File.expand_path("../build/ios/archive/Runner.xcarchive", __dir__)
+    output_dir = File.expand_path("../build/ios/ipa", __dir__)
+
+    # Build with manual signing using the downloaded profile
+    gym(
+      workspace: "Runner.xcworkspace",
+      scheme: "Runner",
+      configuration: "Release",
+      archive_path: archive_path,
+      output_directory: output_dir,
+      output_name: "wealth_tracker",
+      export_method: "app-store",
+      export_options: {
+        provisioningProfiles: {
+          "ch.miniapps.wealthtracker" => lane_context[SharedValues::SIGH_NAME]
+        }
+      }
+    )
+
+    ipa_path = "#{output_dir}/wealth_tracker.ipa"
+    unless File.exist?(ipa_path)
+      UI.user_error!("IPA not found at #{ipa_path}")
+    end
+
+    # Note: dSYM symbols are uploaded automatically by the FlutterFire build phase
+
+    # Upload to TestFlight
+    upload_to_testflight(
+      ipa: ipa_path,
+      skip_waiting_for_build_processing: true,
+      app_identifier: "ch.miniapps.wealthtracker"
+    )
+  end
+
+  desc "Build and upload to App Store"
+  lane :release do
+    setup_ci if ENV['CI']
+
+    # Setup App Store Connect API Key if available
+    key_path = asc_key_path
+    if ENV['ASC_KEY_ID'] && ENV['ASC_ISSUER_ID'] && key_path
+      app_store_connect_api_key(
+        key_id: ENV['ASC_KEY_ID'],
+        issuer_id: ENV['ASC_ISSUER_ID'],
+        key_filepath: key_path
+      )
+    end
+
+    # Ensure we have a distribution certificate
+    get_certificates(
+      platform: "ios"
+    )
+
+    # Ensure we have an App Store provisioning profile
+    get_provisioning_profile(
+      app_identifier: "ch.miniapps.wealthtracker",
+      platform: "ios"
+    )
+
+    # Install the provisioning profile
+    install_provisioning_profile(path: lane_context[SharedValues::SIGH_PROFILE_PATH])
+
+    # Build the Flutter archive (without export)
+    Dir.chdir("..") do
+      sh("flutter build ios --release --no-codesign")
+    end
+
+    # Archive and export
+    archive_path = File.expand_path("../build/ios/archive/Runner.xcarchive", __dir__)
+    output_dir = File.expand_path("../build/ios/ipa", __dir__)
+
+    gym(
+      workspace: "Runner.xcworkspace",
+      scheme: "Runner",
+      configuration: "Release",
+      archive_path: archive_path,
+      output_directory: output_dir,
+      output_name: "wealth_tracker",
+      export_method: "app-store",
+      export_options: {
+        provisioningProfiles: {
+          "ch.miniapps.wealthtracker" => lane_context[SharedValues::SIGH_NAME]
+        }
+      }
+    )
+
+    ipa_path = "#{output_dir}/wealth_tracker.ipa"
+    unless File.exist?(ipa_path)
+      UI.user_error!("IPA not found at #{ipa_path}")
+    end
+
+    # Note: dSYM symbols are uploaded automatically by the FlutterFire build phase
+
+    # Upload to App Store
+    upload_to_app_store(
+      ipa: ipa_path,
+      submit_for_review: false,
+      automatic_release: false,
+      force: true,
+      skip_metadata: true,
+      skip_screenshots: true,
+      app_identifier: "ch.miniapps.wealthtracker"
+    )
+  end
+
+  desc "Build IPA locally without uploading"
+  lane :build do
+    # Setup App Store Connect API Key if available
+    key_path = asc_key_path
+    if ENV['ASC_KEY_ID'] && ENV['ASC_ISSUER_ID'] && key_path
+      app_store_connect_api_key(
+        key_id: ENV['ASC_KEY_ID'],
+        issuer_id: ENV['ASC_ISSUER_ID'],
+        key_filepath: key_path
+      )
+    end
+
+    # Ensure we have a distribution certificate
+    get_certificates(
+      platform: "ios"
+    )
+
+    # Ensure we have an App Store provisioning profile
+    get_provisioning_profile(
+      app_identifier: "ch.miniapps.wealthtracker",
+      platform: "ios"
+    )
+
+    # Install the provisioning profile
+    install_provisioning_profile(path: lane_context[SharedValues::SIGH_PROFILE_PATH])
+
+    Dir.chdir("..") do
+      sh("flutter build ios --release --no-codesign")
+    end
+
+    archive_path = File.expand_path("../build/ios/archive/Runner.xcarchive", __dir__)
+    output_dir = File.expand_path("../build/ios/ipa", __dir__)
+
+    gym(
+      workspace: "Runner.xcworkspace",
+      scheme: "Runner",
+      configuration: "Release",
+      archive_path: archive_path,
+      output_directory: output_dir,
+      output_name: "wealth_tracker",
+      export_method: "app-store",
+      export_options: {
+        provisioningProfiles: {
+          "ch.miniapps.wealthtracker" => lane_context[SharedValues::SIGH_NAME]
+        }
+      }
+    )
+
+    UI.success("Built: #{output_dir}/wealth_tracker.ipa")
+  end
+end

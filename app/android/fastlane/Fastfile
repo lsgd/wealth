@@ -1,0 +1,96 @@
+default_platform(:android)
+
+platform :android do
+  desc "Build and upload to Google Play internal testing"
+  lane :beta do
+    # Build the Flutter app
+    Dir.chdir("..") do
+      sh("flutter build appbundle --release")
+    end
+
+    # Upload to Play Store internal testing
+    upload_to_play_store(
+      track: "internal",
+      aab: "../build/app/outputs/bundle/release/app-release.aab",
+      skip_upload_metadata: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true,
+      json_key: ENV['PLAY_STORE_JSON_KEY'] || "play-store-key.json"
+    )
+  end
+
+  desc "Build and upload to Google Play production"
+  lane :release do
+    # Build the Flutter app
+    Dir.chdir("..") do
+      sh("flutter build appbundle --release")
+    end
+
+    # Upload to Play Store production
+    upload_to_play_store(
+      track: "production",
+      aab: "../build/app/outputs/bundle/release/app-release.aab",
+      skip_upload_metadata: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true,
+      json_key: ENV['PLAY_STORE_JSON_KEY'] || "play-store-key.json"
+    )
+  end
+
+  desc "Build and upload to Google Play beta"
+  lane :beta_public do
+    # Build the Flutter app
+    Dir.chdir("..") do
+      sh("flutter build appbundle --release")
+    end
+
+    # Upload to Play Store beta track
+    upload_to_play_store(
+      track: "beta",
+      aab: "../build/app/outputs/bundle/release/app-release.aab",
+      skip_upload_metadata: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true,
+      json_key: ENV['PLAY_STORE_JSON_KEY'] || "play-store-key.json"
+    )
+  end
+
+  desc "Build APK and AAB locally without uploading"
+  lane :build do
+    # Build the Flutter app
+    Dir.chdir("..") do
+      sh("flutter build appbundle --release")
+      sh("flutter build apk --release")
+    end
+
+    puts "Built artifacts:"
+    puts "  AAB: build/app/outputs/bundle/release/app-release.aab"
+    puts "  APK: build/app/outputs/flutter-apk/app-release.apk"
+  end
+
+  desc "Promote internal to beta"
+  lane :promote_to_beta do
+    upload_to_play_store(
+      track: "internal",
+      track_promote_to: "beta",
+      skip_upload_aab: true,
+      skip_upload_metadata: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true,
+      json_key: ENV['PLAY_STORE_JSON_KEY'] || "play-store-key.json"
+    )
+  end
+
+  desc "Promote beta to production"
+  lane :promote_to_production do
+    upload_to_play_store(
+      track: "beta",
+      track_promote_to: "production",
+      skip_upload_aab: true,
+      skip_upload_metadata: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true,
+      json_key: ENV['PLAY_STORE_JSON_KEY'] || "play-store-key.json"
+    )
+  end
+end

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>API_KEY</key>
+	<string>AIzaSyDGjErkjYNLmMsUuWgEMgXA9G1t-R3gF28</string>
+	<key>GCM_SENDER_ID</key>
+	<string>932474696132</string>
+	<key>PLIST_VERSION</key>
+	<string>1</string>
+	<key>BUNDLE_ID</key>
+	<string>ch.miniapps.wealthtracker</string>
+	<key>PROJECT_ID</key>
+	<string>miniapps-ch</string>
+	<key>STORAGE_BUCKET</key>
+	<string>miniapps-ch.firebasestorage.app</string>
+	<key>IS_ADS_ENABLED</key>
+	<false></false>
+	<key>IS_ANALYTICS_ENABLED</key>
+	<false></false>
+	<key>IS_APPINVITE_ENABLED</key>
+	<true></true>
+	<key>IS_GCM_ENABLED</key>
+	<true></true>
+	<key>IS_SIGNIN_ENABLED</key>
+	<true></true>
+	<key>GOOGLE_APP_ID</key>
+	<string>1:932474696132:ios:4a09d2e6031c1cfbc2f491</string>
+</dict>
+</plist>

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "932474696132",
+    "project_id": "miniapps-ch",
+    "storage_bucket": "miniapps-ch.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:932474696132:android:ac72f94ff2760bcec2f491",
+        "android_client_info": {
+          "package_name": "ch.miniapps.wealthtracker"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDZCh4oqn7c3AU2RuGYas0mNFEAUmb8JyI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
